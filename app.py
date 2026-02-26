@@ -15,36 +15,37 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Neo-Brutalista Moderno (Com melhorias na Sidebar) ---
+# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold) ---
 st.markdown("""
     <style>
+    /* Global */
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
     
-    /* Barra Lateral Estilizada */
+    /* Sidebar */
     [data-testid="stSidebar"] { 
         background-color: #FFFFFF !important; 
         border-right: 2px solid #E0E0E0; 
-        box-shadow: 4px 0px 15px rgba(0,0,0,0.05); 
     }
 
     /* Títulos GORA */
     h1, h2, h3 { color: #2E7D32 !important; font-weight: 800 !important; letter-spacing: -1px; }
 
-    /* ESTILIZAÇÃO DA NAVEGAÇÃO LATERAL (BOLD & LARGE) */
-    div[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+    /* NAVEGAÇÃO LATERAL - FORÇAR NEGRITO E COR */
+    /* Alvo: O texto das opções do rádio */
+    div[data-testid="stSidebar"] div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
         font-weight: 800 !important;
         font-size: 1.2rem !important;
-        margin-bottom: 15px !important;
-        padding: 10px !important;
-        border-radius: 10px;
-        transition: 0.3s;
-    }
-    
-    div[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
-        background-color: rgba(46, 125, 50, 0.05);
+        color: #1E1E1E !important;
+        margin: 0 !important;
     }
 
-    /* Cartões de Chat */
+    /* Alvo: O círculo do rádio (selecionado) */
+    div[data-testid="stSidebar"] div[role="radiogroup"] input[checked] + div {
+        background-color: #2E7D32 !important;
+        border-color: #2E7D32 !important;
+    }
+
+    /* Cartões de Chat - Neo-Brutalismo */
     .stChatMessage {
         background-color: #FFFFFF !important;
         border: 2px solid #E0E0E0 !important;
@@ -62,22 +63,12 @@ st.markdown("""
         color: #2E7D32 !important;
         font-weight: 800 !important;
         box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
-        padding: 0.6rem 1rem !important;
     }
     .stButton button:hover { 
         background-color: #2E7D32 !important; 
         color: white !important; 
         transform: translate(-2px, -2px); 
         box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3); 
-    }
-    
-    /* Editor de Código Estilo Terminal Claro */
-    .stTextArea textarea { 
-        font-family: 'Fira Code', monospace; 
-        background-color: #FDFDFD !important; 
-        border: 2px solid #D0D0D0 !important; 
-        color: #004a99 !important;
-        font-size: 14px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -103,14 +94,12 @@ if "code_to_lab" not in st.session_state: st.session_state.code_to_lab = ""
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
 
-# --- 5. Barra Lateral GORA (Atualizada) ---
+# --- 5. Barra Lateral GORA ---
 with st.sidebar:
-    # Imagem aumentada para destaque vanguardista
-    st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=100)
+    st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=90)
     st.title("GORA Workspace")
     
     st.write("### Navegação")
-    # Agora em negrito e maior via CSS
     menu_opcao = st.radio(
         "Módulos", 
         ["💬 GORA Chat", "💻 GORA Lab"], 
@@ -118,14 +107,14 @@ with st.sidebar:
     )
     
     st.divider()
-    if st.button("➕ NOVO CICLO DE IA", use_container_width=True):
+    if st.button("➕ NOVO CICLO", use_container_width=True):
         nid = str(uuid.uuid4())
         st.session_state.all_chats[nid] = {"title": "Nova Inteligência", "history": []}
         st.session_state.current_chat_id = nid
         st.session_state.suggestions = []
         st.rerun()
     
-    st.write("### Histórico de Sessões")
+    st.write("### Histórico")
     for cid, data in list(st.session_state.all_chats.items()):
         col1, col2 = st.columns([0.8, 0.2])
         if col1.button(data["title"], key=cid, use_container_width=True):
@@ -143,7 +132,7 @@ with st.sidebar:
         genai.configure(api_key=api_key)
         try:
             models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            selected_model = st.selectbox("Intelligence Engine:", models, index=0)
+            selected_model = st.selectbox("Engine:", models, index=0)
         except: st.error("Erro na API Key.")
 
 # --- 6. Módulo: GORA Chat ---
@@ -167,7 +156,7 @@ if menu_opcao == "💬 GORA Chat":
                     st.session_state.prompt_input = sug
                     st.rerun()
 
-        files = st.file_uploader("Upload de Documentos", accept_multiple_files=True, label_visibility="collapsed")
+        files = st.file_uploader("Arquivos", accept_multiple_files=True, label_visibility="collapsed")
         prompt = st.chat_input("Comande a GORA...")
         if "prompt_input" in st.session_state: prompt = st.session_state.pop("prompt_input")
 
@@ -177,19 +166,19 @@ if menu_opcao == "💬 GORA Chat":
             payload = [prompt]
             for f in files:
                 if f.type.startswith('image/'): payload.append(Image.open(f))
-                elif f.name.endswith('.pdf'): contexto += f"\n[PDF: {f.name}] {extrair_texto_pdf(f)}"
-                elif f.name.endswith('.docx'): contexto += f"\n[Word: {f.name}] {extrair_texto_word(f)}"
+                elif f.name.endswith('.pdf'): contexto += f"\n[Doc: {f.name}] {extrair_texto_pdf(f)}"
+                elif f.name.endswith('.docx'): contexto += f"\n[Doc: {f.name}] {extrair_texto_word(f)}"
                 elif f.name.endswith('.csv'): contexto += f"\n[CSV: {f.name}] {pd.read_csv(f).head().to_string()}"
 
-            if contexto: payload.insert(0, f"CONTEXTO ADICIONAL:\n{contexto}")
+            if contexto: payload.insert(0, f"CONTEXTO:\n{contexto}")
 
             model = genai.GenerativeModel(selected_model)
             chat_session = model.start_chat(history=chat_data["history"])
             
             with st.chat_message("assistant"):
-                with st.spinner("GORA a processar inteligência..."):
+                with st.spinner("GORA a processar..."):
                     try:
-                        instruct = "\n\nResponde de forma vanguardista. Se gerares código, termina com 'CÓDIGO:' e o bloco. Termina sempre com 'SUGESTÕES:' e 3 perguntas curtas."
+                        instruct = "\n\nResponde e, se gerares código, termina com 'CÓDIGO:' e o bloco. Termina SEMPRE com 'SUGESTÕES:' e 3 perguntas curtas."
                         payload[-1] += instruct
                         response = chat_session.send_message(payload)
                         
@@ -199,8 +188,8 @@ if menu_opcao == "💬 GORA Chat":
                         if "CÓDIGO:" in full_text:
                             code_part = full_text.split("CÓDIGO:")[1].split("SUGESTÕES:")[0].strip()
                             st.session_state.code_to_lab = code_part.replace('```python', '').replace('```', '')
-                            st.success("💻 Algoritmo detetado! Transferível para o GORA Lab.")
-                            if st.button("🚀 TRANSFERIR PARA O LAB"): st.toast("Pronto!")
+                            st.success("💻 Código detetado!")
+                            if st.button("🚀 TRANSFERIR PARA O LAB"): st.toast("Transferido!")
 
                         st.markdown(main_resp)
                         
@@ -210,50 +199,49 @@ if menu_opcao == "💬 GORA Chat":
 
                         chat_data["history"].append({"role": "user", "parts": [prompt]})
                         chat_data["history"].append({"role": "model", "parts": [main_resp]})
-                        if chat_data["title"] == "Nova Inteligência": chat_data["title"] = prompt[:25] + "..."
+                        if chat_data["title"] == "Nova Inteligência": chat_data["title"] = prompt[:20] + "..."
                         st.rerun()
                     except Exception as e:
-                        if "429" in str(e): st.error("⚠️ Quota atingida (Free Tier). Aguarde 60s.")
-                        else: st.error(f"Erro Crítico: {e}")
+                        if "429" in str(e): st.error("⚠️ Quota atingida. Aguarde 60s.")
+                        else: st.error(f"Erro: {e}")
 
 # --- 7. Módulo: GORA Lab ---
 elif menu_opcao == "💻 GORA Lab":
     st.markdown("## 💻 GORA Python Lab")
-    current_code = st.session_state.code_to_lab if st.session_state.code_to_lab else "# GORA Engine Lab\nimport pandas as pd\nprint('Aguardando input ou código do chat...')"
+    current_code = st.session_state.code_to_lab if st.session_state.code_to_lab else "# GORA Lab\nprint('Pronto para o teste!')"
     
     col_code, col_out = st.columns([1.1, 0.9], gap="large")
     
     with col_code:
-        st.write("🛠️ **Editor de Algoritmos**")
-        code = st.text_area("Editor", height=480, value=current_code)
+        st.write("🛠️ **Editor**")
+        code = st.text_area("Célula de Código", height=450, value=current_code)
         c1, c2, c3 = st.columns(3)
         exec_btn = c1.button("⚡ EXECUTAR", use_container_width=True)
         if c2.button("🧹 LIMPAR", use_container_width=True):
             st.session_state.code_to_lab = ""
             st.rerun()
-        c3.download_button("💾 EXPORTAR .PY", code, file_name="gora_engine.py", use_container_width=True)
+        c3.download_button("💾 EXPORTAR .PY", code, file_name="gora.py", use_container_width=True)
 
     with col_out:
-        st.write("📊 **Output & Artefactos**")
+        st.write("📊 **Output & Documentos**")
         if exec_btn:
             ficheiros_antes = set(os.listdir("."))
             old_stdout = sys.stdout
             sys.stdout = out = StringIO()
             try:
-                # Execução Estilo Colab (Persistente)
                 exec(code, st.session_state.lab_globals)
-                st.code(out.getvalue() if out.getvalue() else "Execução concluída com sucesso.")
+                st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
                 
                 novos = set(os.listdir(".")) - ficheiros_antes
                 if novos:
                     st.divider()
-                    st.write("📂 **Documentos Gerados:**")
+                    st.write("📂 **Ficheiros Produzidos:**")
                     for f in novos:
                         if os.path.isfile(f):
                             with open(f, "rb") as f_data:
                                 st.download_button(label=f"📥 Baixar {f}", data=f_data, file_name=f, use_container_width=True)
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
-        else: st.info("Execute uma célula para ver resultados, gráficos ou descarregar ficheiros produzidos.")
+        else: st.info("O resultado aparecerá aqui.")
 
 
