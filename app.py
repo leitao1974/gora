@@ -8,67 +8,75 @@ from PyPDF2 import PdfReader
 from docx import Document
 from PIL import Image
 
-# --- Configuração da Página ---
-st.set_page_config(page_title="Gemini AI Lab", layout="wide")
+# --- 1. Configuração da Página (Deve ser o primeiro comando) ---
+st.set_page_config(page_title="Gemini AI Lab", layout="wide", initial_sidebar_state="expanded")
 
-# --- CSS FIXO (Tabs no Topo) ---
+# --- 2. CSS Robusto para Fixar Tabs (Correção Definitiva) ---
 st.markdown("""
     <style>
-    .stTabs [data-baseweb="tab-list"] {
-        position: fixed;
-        top: 0;
-        background-color: white;
-        z-index: 1000;
-        width: 100%;
-        border-bottom: 2px solid #4CAF50;
-        padding: 10px 20px 0px 20px;
+    /* Fixar a barra de abas no topo absoluto */
+    div[data-testid="stTabs"] > div:first-child {
+        position: fixed !important;
+        top: 0px !important;
+        background-color: white !important;
+        z-index: 9999 !important;
+        width: 100% !important;
+        border-bottom: 2px solid #4CAF50 !important;
+        padding: 45px 20px 0px 20px !important; /* Espaço para a barra de sistema do Streamlit */
     }
-    .stTabs [data-baseweb="tab-panel"] {
-        margin-top: 60px;
+    /* Empurrar o conteúdo das abas para baixo para não ser tapado */
+    div[data-testid="stTabs"] > div:nth-child(2) {
+        margin-top: 100px !important;
     }
-    /* Estilo para o botão de download */
-    .stDownloadButton {
-        margin-bottom: 20px;
+    /* Estética dos botões e inputs */
+    .stDownloadButton, .stButton {
+        margin-top: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- Funções de Extração ---
+# --- 3. Funções de Extração de Documentos ---
 def extrair_texto_pdf(file):
     try:
-        return "".join([p.extract_text() for p in PdfReader(file).pages])
+        reader = PdfReader(file)
+        return "".join([p.extract_text() for p in reader.pages])
     except: return "Erro ao ler PDF."
 
 def extrair_texto_word(file):
     try:
-        return "\n".join([p.text for p in Document(file).paragraphs])
+        doc = Document(file)
+        return "\n".join([p.text for p in doc.paragraphs])
     except: return "Erro ao ler Word."
 
-# --- Gestão de Estado e Sidebar ---
+# --- 4. Gestão de Estado (Sessões de Chat) ---
 if "all_chats" not in st.session_state:
     st.session_state.all_chats = {}
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = None
 
+# --- 5. Barra Lateral (Histórico e Configurações) ---
 with st.sidebar:
-    st.title("📂 Histórico")
+    st.title("📂 Conversas")
     if st.button("➕ Nova Conversa", use_container_width=True):
         nid = str(uuid.uuid4())
         st.session_state.all_chats[nid] = {"title": "Nova Conversa", "messages": []}
         st.session_state.current_chat_id = nid
         st.rerun()
     
+    # Listagem de chats guardados
     for cid, data in list(st.session_state.all_chats.items()):
         col1, col2 = st.columns([0.8, 0.2])
         if col1.button(data["title"], key=cid, use_container_width=True):
             st.session_state.current_chat_id = cid
             st.rerun()
-        if col2.button("🗑️", key=f"d_{cid}"):
+        if col2.button("🗑️", key=f"del_{cid}"):
             del st.session_state.all_chats[cid]
             if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
             st.rerun()
 
     st.divider()
+    
+    # Chave API (Prioriza Secrets do Streamlit Cloud)
     api_key = st.secrets.get("GOOGLE_API_KEY", "")
     if not api_key:
         api_key = st.text_input("Introduza a Google API Key:", type="password")
@@ -79,86 +87,89 @@ with st.sidebar:
         try:
             models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             selected_model = st.selectbox("Modelo Gemini:", models)
-        except: st.error("Erro na API Key.")
+        except: st.error("Chave API inválida ou erro de conexão.")
 
-# --- Interface Principal ---
-tab1, tab2 = st.tabs(["💬 Chat Multimodal", "💻 Python Lab"])
+# --- 6. Interface de Abas Principal ---
+tab1, tab2 = st.tabs(["💬 Chat Dinâmico", "💻 Python Lab"])
 
+# --- ABA 1: CHAT IA ---
 with tab1:
-    if st.session_state.current_chat_id and selected_model:
-        chat = st.session_state.all_chats[st.session_state.current_chat_id]
+    if not st.session_state.current_chat_id:
+        st.info("Crie uma conversa na barra lateral para começar.")
+    elif not selected_model:
+        st.warning("Configure a API Key para ativar o Chat.")
+    else:
+        chat_session = st.session_state.all_chats[st.session_state.current_chat_id]
         
-        for msg in chat["messages"]:
+        # Exibir Histórico
+        for msg in chat_session["messages"]:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        files = st.file_uploader("Upload: PDF, Word, Imagem, CSV", accept_multiple_files=True)
+        # Upload de Ficheiros (Vários tipos ao mesmo tempo)
+        files = st.file_uploader("Upload: PDF, Word, Imagem, CSV, TXT", accept_multiple_files=True)
 
         if prompt := st.chat_input("Pergunte ao Gemini..."):
-            chat["messages"].append({"role": "user", "content": prompt})
+            chat_session["messages"].append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.markdown(prompt)
 
             with st.chat_message("assistant"):
-                with st.spinner("🤖 Analisando ficheiros e gerando resposta..."):
+                with st.spinner("🤖 Analisando conteúdo..."):
                     try:
                         model = genai.GenerativeModel(selected_model)
-                        conteudo = [prompt]
-                        contexto_texto = ""
+                        payload = [prompt]
+                        contexto = ""
                         
                         for f in files:
                             if f.type.startswith('image/'):
-                                conteudo.append(Image.open(f))
+                                payload.append(Image.open(f))
                             elif f.name.endswith('.pdf'):
-                                contexto_texto += f"\n[PDF {f.name}]:\n{extrair_texto_pdf(f)}"
+                                contexto += f"\n[PDF: {f.name}]\n{extrair_texto_pdf(f)}"
                             elif f.name.endswith('.docx'):
-                                contexto_texto += f"\n[Word {f.name}]:\n{extrair_texto_word(f)}"
+                                contexto += f"\n[Word: {f.name}]\n{extrair_texto_word(f)}"
                             elif f.name.endswith('.csv'):
-                                contexto_texto += f"\n[CSV {f.name}]:\n{pd.read_csv(f).head().to_string()}"
+                                df = pd.read_csv(f)
+                                contexto += f"\n[CSV: {f.name}]\n{df.head().to_string()}"
                         
-                        if contexto_texto:
-                            conteudo.insert(0, f"Contexto extraído:\n{contexto_texto}")
+                        if contexto: payload.insert(0, f"Contexto:\n{contexto}")
                         
-                        resp = model.generate_content(conteudo)
+                        resp = model.generate_content(payload)
                         st.markdown(resp.text)
-                        chat["messages"].append({"role": "assistant", "content": resp.text})
+                        chat_session["messages"].append({"role": "assistant", "content": resp.text})
                         
-                        if chat["title"] == "Nova Conversa":
-                            chat["title"] = prompt[:25] + "..."
+                        # Renomear chat se for o início
+                        if chat_session["title"] == "Nova Conversa":
+                            chat_session["title"] = prompt[:25] + "..."
                             st.rerun()
-                    except Exception as e: st.error(f"Erro: {e}")
+                    except Exception as e: st.error(f"Erro na IA: {e}")
 
+# --- ABA 2: PYTHON LAB ---
 with tab2:
     st.header("Python Lab")
-    st.write("Escreva e teste o seu código aqui.")
+    st.caption("Teste scripts, processe dados e visualize resultados.")
     
-    code_input = st.text_area("Célula de Código Python:", height=300, 
-                             value="# Exemplo: \nimport pandas as pd\nprint('Ambiente pronto!')")
+    code_area = st.text_area("Editor Python:", height=300, 
+                            value="# Escreva o seu código aqui\nimport pandas as pd\nprint('Lab pronto!')")
     
-    col_run, col_dl = st.columns([1, 1])
-    
-    with col_run:
-        btn_run = st.button("▶ Executar Código", use_container_width=True)
-    
-    with col_dl:
+    c1, c2 = st.columns(2)
+    with c1:
+        run_btn = st.button("▶ Executar Código", use_container_width=True)
+    with c2:
         st.download_button(
             label="📥 Descarregar Script (.py)",
-            data=code_input,
-            file_name="meu_script.py",
+            data=code_area,
+            file_name="script_gerado.py",
             mime="text/x-python",
             use_container_width=True
         )
 
-    if btn_run:
+    if run_btn:
         old_stdout = sys.stdout
         sys.stdout = out = StringIO()
         try:
-            # Executa com acesso a bibliotecas comuns
-            exec(code_input, {'pd': pd, 'st': st, 'genai': genai, 'plt': None})
-            st.subheader("Saída (Console):")
-            result = out.getvalue()
-            if result:
-                st.code(result)
-            else:
-                st.info("Código executado sem saída de texto.")
+            # Contexto de execução com bibliotecas comuns disponíveis
+            exec(code_area, {'pd': pd, 'st': st, 'genai': genai, 'plt': None})
+            st.subheader("Console Output:")
+            st.code(out.getvalue() if out.getvalue() else "Executado com sucesso (sem output).")
         except Exception as e:
             st.error(f"Erro de Execução: {e}")
         finally:
