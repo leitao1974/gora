@@ -9,9 +9,9 @@ from docx import Document
 from PIL import Image
 
 # --- 1. Configuração da Página ---
-st.set_page_config(page_title="Gemini AI Lab", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Gemini Interactive Lab", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. Funções de Extração de Documentos ---
+# --- 2. Funções de Extração ---
 def extrair_texto_pdf(file):
     try:
         reader = PdfReader(file)
@@ -24,135 +24,114 @@ def extrair_texto_word(file):
         return "\n".join([p.text for p in doc.paragraphs])
     except: return "Erro ao ler Word."
 
-# --- 3. Gestão de Estado (Sessões) ---
+# --- 3. Inicialização do Estado ---
 if "all_chats" not in st.session_state:
     st.session_state.all_chats = {}
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = None
 
-# --- 4. Barra Lateral (Navegação e Configurações) ---
+# --- 4. Barra Lateral ---
 with st.sidebar:
-    st.title("🚀 Gemini AI Lab")
-    
-    # NAVEGAÇÃO PRINCIPAL (Substitui as Tabs de topo)
-    st.subheader("Navegação")
-    menu_opcao = st.radio("Ir para:", ["💬 Chat Multimodal", "💻 Python Lab"])
+    st.title("🚀 Gemini Interactive")
+    menu_opcao = st.radio("Navegação:", ["💬 Chat Bidirecional", "💻 Python Lab"])
     
     st.divider()
-    st.subheader("📂 Conversas")
-    
     if st.button("➕ Nova Conversa", use_container_width=True):
         nid = str(uuid.uuid4())
-        st.session_state.all_chats[nid] = {"title": "Nova Conversa", "messages": []}
+        # Agora guardamos o histórico no formato que o Gemini espera: list de dicts {'role', 'parts'}
+        st.session_state.all_chats[nid] = {"title": "Nova Conversa", "history": []}
         st.session_state.current_chat_id = nid
         st.rerun()
     
-    # Listar Histórico
     for cid, data in list(st.session_state.all_chats.items()):
         col1, col2 = st.columns([0.8, 0.2])
         if col1.button(data["title"], key=cid, use_container_width=True):
             st.session_state.current_chat_id = cid
-            # Forçar mudança para o chat se clicar numa conversa antiga
-            # menu_opcao = "💬 Chat Multimodal" 
+            st.rerun()
         if col2.button("🗑️", key=f"del_{cid}"):
             del st.session_state.all_chats[cid]
             if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
             st.rerun()
 
     st.divider()
-    
-    # API Key
-    api_key = st.secrets.get("GOOGLE_API_KEY", "")
-    if not api_key:
-        api_key = st.text_input("Introduza a Google API Key:", type="password")
-
+    api_key = st.secrets.get("GOOGLE_API_KEY", st.text_input("API Key:", type="password"))
     selected_model = None
     if api_key:
         genai.configure(api_key=api_key)
         try:
             models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            selected_model = st.selectbox("Modelo:", models)
+            selected_model = st.selectbox("Modelo:", models, index=0)
         except: st.error("Erro na API Key.")
 
-# --- 5. Lógica de Exibição Baseada na Navegação Lateral ---
+# --- 5. Lógica Principal ---
 
-if menu_opcao == "💬 Chat Multimodal":
-    st.header("Chat Dinâmico")
+if menu_opcao == "💬 Chat Bidirecional":
+    st.header("Interação com IA")
     
     if not st.session_state.current_chat_id:
-        st.info("Crie uma conversa na barra lateral para começar.")
+        st.info("Crie uma conversa à esquerda.")
     elif not selected_model:
-        st.warning("Configure a API Key para continuar.")
+        st.warning("Configure a API Key.")
     else:
         chat_data = st.session_state.all_chats[st.session_state.current_chat_id]
         
-        # Histórico
-        for msg in chat_data["messages"]:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
+        # Exibir histórico (Formatando para o Streamlit)
+        for message in chat_data["history"]:
+            role = "assistant" if message["role"] == "model" else "user"
+            with st.chat_message(role):
+                st.markdown(message["parts"][0])
 
-        # Upload
-        files = st.file_uploader("Upload: PDF, Word, Imagem, CSV", accept_multiple_files=True)
+        files = st.file_uploader("Upload de contexto (opcional)", accept_multiple_files=True)
 
-        if prompt := st.chat_input("Pergunte algo ao Gemini..."):
-            chat_data["messages"].append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+        if prompt := st.chat_input("Escreve a tua mensagem..."):
+            # Exibir mensagem do utilizador imediatamente
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Preparar contexto de ficheiros se for a primeira mensagem ou houver novos
+            contexto_extra = ""
+            if files:
+                for f in files:
+                    if f.name.endswith('.pdf'): contexto_extra += f"\n[PDF: {f.name}] {extrair_texto_pdf(f)}"
+                    elif f.name.endswith('.docx'): contexto_extra += f"\n[Word: {f.name}] {extrair_texto_word(f)}"
+                    elif f.name.endswith('.csv'): contexto_extra += f"\n[CSV: {f.name}] {pd.read_csv(f).head().to_string()}"
+            
+            prompt_final = f"{prompt}\n\n(Contexto adicional: {contexto_extra})" if contexto_extra else prompt
 
+            # --- Lógica de Chat Bidirecional com Gemini ---
+            model = genai.GenerativeModel(selected_model)
+            # Inicia a sessão com o histórico existente
+            chat_session = model.start_chat(history=chat_data["history"])
+            
             with st.chat_message("assistant"):
-                with st.spinner("🤖 Analisando..."):
-                    try:
-                        model = genai.GenerativeModel(selected_model)
-                        payload = [prompt]
-                        contexto = ""
-                        
-                        for f in files:
-                            if f.type.startswith('image/'):
-                                payload.append(Image.open(f))
-                            elif f.name.endswith('.pdf'):
-                                contexto += f"\n[PDF: {f.name}]\n{extrair_texto_pdf(f)}"
-                            elif f.name.endswith('.docx'):
-                                contexto += f"\n[Word: {f.name}]\n{extrair_texto_word(f)}"
-                            elif f.name.endswith('.csv'):
-                                contexto += f"\n[CSV: {f.name}]\n{pd.read_csv(f).head().to_string()}"
-                        
-                        if contexto: payload.insert(0, f"Contexto:\n{contexto}")
-                        
-                        resp = model.generate_content(payload)
-                        st.markdown(resp.text)
-                        chat_data["messages"].append({"role": "assistant", "content": resp.text})
-                        
-                        if chat_data["title"] == "Nova Conversa":
-                            chat_data["title"] = prompt[:20] + "..."
-                            st.rerun()
-                    except Exception as e: st.error(f"Erro: {e}")
+                placeholder = st.empty()
+                full_response = ""
+                
+                with st.spinner("IA a pensar..."):
+                    # Streaming para resposta dinâmica
+                    response = chat_session.send_message(prompt_final, stream=True)
+                    
+                    for chunk in response:
+                        full_response += chunk.text
+                        placeholder.markdown(full_response + "▌") # Efeito de cursor
+                    placeholder.markdown(full_response)
+
+            # Guardar no histórico (formato Gemini)
+            chat_data["history"].append({"role": "user", "parts": [prompt]})
+            chat_data["history"].append({"role": "model", "parts": [full_response]})
+            
+            if chat_data["title"] == "Nova Conversa":
+                chat_data["title"] = prompt[:20] + "..."
+                st.rerun()
 
 elif menu_opcao == "💻 Python Lab":
     st.header("Python Lab")
-    st.write("Execute código e exporte os seus scripts.")
-    
-    editor_code = st.text_area("Editor Python:", height=300, 
-                              value="# Teste aqui o seu código\nimport pandas as pd\nprint('Ambiente ativo!')")
-    
-    col_run, col_dl = st.columns(2)
-    with col_run:
-        btn_run = st.button("▶ Executar Código", use_container_width=True)
-    with col_dl:
-        st.download_button(
-            label="📥 Descarregar Script (.py)",
-            data=editor_code,
-            file_name="script_gerado.py",
-            mime="text/x-python",
-            use_container_width=True
-        )
-
-    if btn_run:
+    editor_code = st.text_area("Editor Python:", height=300, value="print('Pronto para testar!')")
+    if st.button("▶ Executar"):
         old_stdout = sys.stdout
         sys.stdout = out = StringIO()
         try:
-            exec(editor_code, {'pd': pd, 'st': st, 'genai': genai})
-            st.subheader("Output da Consola:")
-            st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
-        except Exception as e:
-            st.error(f"Erro: {e}")
-        finally:
-            sys.stdout = old_stdout
-
+            exec(editor_code, {'pd': pd, 'st': st})
+            st.code(out.getvalue())
+        except Exception as e: st.error(f"Erro: {e}")
+        finally: sys.stdout = old_stdout
