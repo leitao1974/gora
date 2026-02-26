@@ -1,16 +1,23 @@
 import streamlit as st
+import google.generativeai as genai
 import sys
 from io import StringIO
 
+# --- Configuração da API ---
+# No Streamlit Cloud, você configurará isso em 'Secrets'
+# Localmente, você pode usar st.secrets["GOOGLE_API_KEY"] ou um .env
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+else:
+    st.error("Por favor, configure a GOOGLE_API_KEY nos Secrets do Streamlit.")
+
 st.set_page_config(page_title="IA Chat & Lab", layout="wide")
 
-st.title("🚀 AI Chat + Python Lab")
-
-# Criando as abas
-tab1, tab2 = st.tabs(["💬 Chat IA", "💻 Python Lab (Estilo Colab)"])
+tab1, tab2 = st.tabs(["💬 Gemini Chat", "💻 Python Lab"])
 
 with tab1:
-    st.header("Chat com IA")
+    st.header("Assistente Gemini")
+    
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -19,38 +26,20 @@ with tab1:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # Input do usuário
-    if prompt := st.chat_input("Como posso ajudar?"):
+    if prompt := st.chat_input("Pergunte algo ao Gemini..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
         
-        # Resposta simulada (Aqui você conectaria a API do Gemini/OpenAI)
-        with st.chat_message("assistant"):
-            response = f"Você disse: '{prompt}'. (Conecte sua API Key para respostas reais!)"
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
-with tab2:
-    st.header("Interpretador Python")
-    st.info("Digite seu código abaixo e pressione Ctrl+Enter ou clique em Executar.")
-    
-    # Área de entrada de código
-    code_input = st.text_area("Célula de Código", height=200, value='print("Olá do Streamlit!")\n\n# Tente somar: \na = 10\nb = 20\nprint(f"Resultado: {a + b}")')
-    
-    if st.button("▶ Executar"):
-        # Redirecionar o output para capturar o print()
-        old_stdout = sys.stdout
-        redirected_output = sys.stdout = StringIO()
-        
+        # Chamada real para o Gemini
         try:
-            # Executa o código
-            exec(code_input)
-            sys.stdout = old_stdout
-            result = redirected_output.getvalue()
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
             
-            st.subheader("Saída:")
-            st.code(result if result else "Código executado com sucesso (sem retorno).")
+            with st.chat_message("assistant"):
+                st.markdown(response.text)
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
         except Exception as e:
-            sys.stdout = old_stdout
-            st.error(f"Erro no código: {e}")
+            st.error(f"Erro na API: {e}")
+
+# ... (O código da Tab 2 permanece o mesmo do exemplo anterior)
