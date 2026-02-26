@@ -8,85 +8,52 @@ from PyPDF2 import PdfReader
 from docx import Document
 from PIL import Image
 
-# --- 1. Configuração Inicial da Página ---
-st.set_page_config(
-    page_title="Gemini AI Lab", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
+# --- 1. Configuração da Página ---
+st.set_page_config(page_title="Gemini AI Lab", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS para Fixar Abas (Sticky) e Permitir Scroll ---
-st.markdown("""
-    <style>
-    /* Fixar a lista de abas no topo (Sticky) */
-    div[data-testid="stTabs"] > div:first-child {
-        position: -webkit-sticky !important;
-        position: sticky !important;
-        top: 2.85rem !important; /* Logo abaixo da barra de sistema do Streamlit */
-        background-color: white !important;
-        z-index: 999 !important;
-        width: 100% !important;
-        border-bottom: 2px solid #4CAF50 !important;
-        padding-top: 5px !important;
-        margin-bottom: 20px !important;
-    }
-
-    /* Ajuste para o Tema Escuro (Dark Mode) */
-    @media (prefers-color-scheme: dark) {
-        div[data-testid="stTabs"] > div:first-child {
-            background-color: #0e1117 !important;
-        }
-    }
-
-    /* Garantir que o container principal permite scroll fluido */
-    .main .block-container {
-        padding-top: 1rem !important;
-        overflow-y: auto !important;
-    }
-
-    /* Estética dos botões */
-    .stButton button {
-        border-radius: 8px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- 3. Funções de Extração de Documentos ---
+# --- 2. Funções de Extração de Documentos ---
 def extrair_texto_pdf(file):
     try:
         reader = PdfReader(file)
         return "".join([p.extract_text() for p in reader.pages])
-    except: return "Erro ao processar PDF."
+    except: return "Erro ao ler PDF."
 
 def extrair_texto_word(file):
     try:
         doc = Document(file)
         return "\n".join([p.text for p in doc.paragraphs])
-    except: return "Erro ao processar Word."
+    except: return "Erro ao ler Word."
 
-# --- 4. Gestão de Estado (Sessões de Conversa) ---
+# --- 3. Gestão de Estado (Sessões) ---
 if "all_chats" not in st.session_state:
     st.session_state.all_chats = {}
 if "current_chat_id" not in st.session_state:
     st.session_state.current_chat_id = None
 
-# --- 5. Barra Lateral (Histórico e API) ---
+# --- 4. Barra Lateral (Navegação e Configurações) ---
 with st.sidebar:
-    st.title("📂 Conversas")
+    st.title("🚀 Gemini AI Lab")
+    
+    # NAVEGAÇÃO PRINCIPAL (Substitui as Tabs de topo)
+    st.subheader("Navegação")
+    menu_opcao = st.radio("Ir para:", ["💬 Chat Multimodal", "💻 Python Lab"])
+    
+    st.divider()
+    st.subheader("📂 Conversas")
+    
     if st.button("➕ Nova Conversa", use_container_width=True):
         nid = str(uuid.uuid4())
         st.session_state.all_chats[nid] = {"title": "Nova Conversa", "messages": []}
         st.session_state.current_chat_id = nid
         st.rerun()
     
-    st.divider()
-    
-    # Listar Histórico de Chats
+    # Listar Histórico
     for cid, data in list(st.session_state.all_chats.items()):
         col1, col2 = st.columns([0.8, 0.2])
         if col1.button(data["title"], key=cid, use_container_width=True):
             st.session_state.current_chat_id = cid
-            st.rerun()
+            # Forçar mudança para o chat se clicar numa conversa antiga
+            # menu_opcao = "💬 Chat Multimodal" 
         if col2.button("🗑️", key=f"del_{cid}"):
             del st.session_state.all_chats[cid]
             if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
@@ -94,7 +61,7 @@ with st.sidebar:
 
     st.divider()
     
-    # Configuração da API Key
+    # API Key
     api_key = st.secrets.get("GOOGLE_API_KEY", "")
     if not api_key:
         api_key = st.text_input("Introduza a Google API Key:", type="password")
@@ -104,29 +71,29 @@ with st.sidebar:
         genai.configure(api_key=api_key)
         try:
             models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            selected_model = st.selectbox("Modelo Gemini:", models)
-        except: st.error("Chave API ou Conexão falhou.")
+            selected_model = st.selectbox("Modelo:", models)
+        except: st.error("Erro na API Key.")
 
-# --- 6. Interface de Abas Principal ---
-tab1, tab2 = st.tabs(["💬 Chat Multimodal", "💻 Python Lab"])
+# --- 5. Lógica de Exibição Baseada na Navegação Lateral ---
 
-# --- ABA 1: Chat Dinâmico com suporte a Ficheiros ---
-with tab1:
+if menu_opcao == "💬 Chat Multimodal":
+    st.header("Chat Dinâmico")
+    
     if not st.session_state.current_chat_id:
-        st.info("Crie ou selecione uma conversa na barra lateral.")
+        st.info("Crie uma conversa na barra lateral para começar.")
     elif not selected_model:
-        st.warning("Aguardando configuração da API Key...")
+        st.warning("Configure a API Key para continuar.")
     else:
         chat_data = st.session_state.all_chats[st.session_state.current_chat_id]
         
-        # Mostrar mensagens existentes
+        # Histórico
         for msg in chat_data["messages"]:
             with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        # Upload de Ficheiros (PDF, Word, Imagem, CSV)
+        # Upload
         files = st.file_uploader("Upload: PDF, Word, Imagem, CSV", accept_multiple_files=True)
 
-        if prompt := st.chat_input("Diga algo ao Gemini..."):
+        if prompt := st.chat_input("Pergunte algo ao Gemini..."):
             chat_data["messages"].append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.markdown(prompt)
 
@@ -145,24 +112,20 @@ with tab1:
                             elif f.name.endswith('.docx'):
                                 contexto += f"\n[Word: {f.name}]\n{extrair_texto_word(f)}"
                             elif f.name.endswith('.csv'):
-                                df = pd.read_csv(f)
-                                contexto += f"\n[CSV: {f.name}]\n{df.head().to_string()}"
+                                contexto += f"\n[CSV: {f.name}]\n{pd.read_csv(f).head().to_string()}"
                         
-                        if contexto: 
-                            payload.insert(0, f"Contexto Extraído:\n{contexto}")
+                        if contexto: payload.insert(0, f"Contexto:\n{contexto}")
                         
                         resp = model.generate_content(payload)
                         st.markdown(resp.text)
                         chat_data["messages"].append({"role": "assistant", "content": resp.text})
                         
-                        # Nomear o chat se for o início
                         if chat_data["title"] == "Nova Conversa":
                             chat_data["title"] = prompt[:20] + "..."
                             st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
 
-# --- ABA 2: Python Lab com Download de Scripts ---
-with tab2:
+elif menu_opcao == "💻 Python Lab":
     st.header("Python Lab")
     st.write("Execute código e exporte os seus scripts.")
     
@@ -185,12 +148,11 @@ with tab2:
         old_stdout = sys.stdout
         sys.stdout = out = StringIO()
         try:
-            # Executar código com bibliotecas essenciais injetadas
-            exec(editor_code, {'pd': pd, 'st': st, 'genai': genai, 'plt': None})
+            exec(editor_code, {'pd': pd, 'st': st, 'genai': genai})
             st.subheader("Output da Consola:")
-            st.code(out.getvalue() if out.getvalue() else "Executado sem erros (sem output).")
+            st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
         except Exception as e:
-            st.error(f"Erro de Execução: {e}")
+            st.error(f"Erro: {e}")
         finally:
             sys.stdout = old_stdout
 
