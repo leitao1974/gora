@@ -11,65 +11,90 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista (Dark Mode & Glassmorphism) ---
+# --- 2. CSS Neo-Brutalismo Soft & Glassmorphism Claro ---
 st.markdown("""
     <style>
-    /* Fundo Geral e Fontes */
+    /* Fundo Geral Claro e Leve */
     .stApp {
-        background-color: #0E1117;
-        color: #E0E0E0;
-    }
-    
-    /* Barra Lateral Estilizada */
-    [data-testid="stSidebar"] {
-        background-color: #161B22 !important;
-        border-right: 1px solid #30363D;
-    }
-    
-    /* Títulos e Headers */
-    h1, h2, h3 {
-        color: #4CAF50 !important;
+        background-color: #F0F2F6;
+        color: #1E1E1E;
         font-family: 'Inter', sans-serif;
-        font-weight: 700;
+    }
+    
+    /* Barra Lateral Moderna e Clara */
+    [data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        border-right: 2px solid #E0E0E0;
+        box-shadow: 4px 0px 10px rgba(0,0,0,0.03);
+    }
+    
+    /* Títulos Principais GORA (Verde Esmeralda) */
+    h1, h2, h3 {
+        color: #2E7D32 !important; /* Verde GORA Sólido */
+        font-weight: 800 !important;
+        letter-spacing: -1px;
     }
 
-    /* Efeito Glassmorphism nos Cartões de Chat */
+    /* Cartões de Chat Estilo 'Neo-Brutalismo Soft' */
     .stChatMessage {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        backdrop-filter: blur(10px);
-        border-radius: 15px !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid #E0E0E0 !important;
+        border-radius: 10px !important;
+        box-shadow: 5px 5px 0px rgba(46, 125, 50, 0.1) !important; /* Sombra sólida suave */
         margin-bottom: 15px;
+        padding: 15px !important;
     }
 
-    /* Botões de Sugestão Neon */
+    /* Botões Modernos e Vibrantes */
     .stButton button {
-        border-radius: 30px !important;
-        border: 1px solid #4CAF50 !important;
-        background-color: transparent !important;
-        color: #4CAF50 !important;
-        font-weight: 600;
-        padding: 0.5rem 1rem;
-        transition: all 0.3s ease;
+        border-radius: 8px !important;
+        border: 2px solid #2E7D32 !important;
+        background-color: #FFFFFF !important;
+        color: #2E7D32 !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: all 0.2s ease;
+        box-shadow: 3px 3px 0px rgba(46, 125, 50, 0.2);
     }
     .stButton button:hover {
-        box-shadow: 0 0 15px rgba(76, 175, 80, 0.4);
-        background-color: #4CAF50 !important;
+        background-color: #2E7D32 !important;
         color: white !important;
-        transform: translateY(-2px);
+        transform: translate(-2px, -2px);
+        box-shadow: 5px 5px 0px rgba(46, 125, 50, 0.3);
+    }
+    .stButton button:active {
+        transform: translate(2px, 2px);
+        box-shadow: 1px 1px 0px rgba(46, 125, 50, 0.3);
     }
 
-    /* Input de Chat */
-    .stChatInputContainer {
-        padding-bottom: 20px;
+    /* Caixas de Input e Texto Modernas */
+    .stTextInput input, .stTextArea textarea, .stSelectbox select {
+        background-color: #FFFFFF !important;
+        border: 2px solid #E0E0E0 !important;
+        border-radius: 8px !important;
+        color: #1E1E1E !important;
+        padding: 10px !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: #2E7D32 !important;
+        box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1) !important;
     }
     
-    /* Customização do Editor de Código */
+    /* Área de Upload Estilizada */
+    [data-testid="stFileUploader"] {
+        background-color: #FFFFFF;
+        border: 2px dashed #2E7D32;
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    /* Customização do Editor de Código (Contraste Claro) */
     .stTextArea textarea {
-        background-color: #0D1117 !important;
-        color: #79C0FF !important;
-        border: 1px solid #30363D !important;
         font-family: 'Fira Code', monospace;
+        background-color: #F9F9F9 !important;
+        color: #0056b3 !important; /* Azul Elétrico para Código */
+        border: 2px solid #E0E0E0 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -95,24 +120,24 @@ if "current_chat_id" not in st.session_state:
 if "suggestions" not in st.session_state:
     st.session_state.suggestions = []
 
-# --- 5. Barra Lateral GORA ---
+# --- 5. Barra Lateral GORA (Design Claro) ---
 with st.sidebar:
-    st.image("https://img.icons8.com/neon/96/artificial-intelligence.png", width=80) # Ícone Vanguardista
+    st.image("https://img.icons8.com/fluency/96/artificial-intelligence.png", width=70) # Ícone Moderno Colorido
     st.title("GORA Workspace")
     
     menu_opcao = st.radio("Módulos", ["💬 GORA Chat", "💻 GORA Lab"], label_visibility="collapsed")
     
     st.divider()
-    if st.button("➕ Novo Briefing", use_container_width=True):
+    if st.button("➕ Novo Ciclo", use_container_width=True):
         nid = str(uuid.uuid4())
-        st.session_state.all_chats[nid] = {"title": "Nova Conversa", "history": []}
+        st.session_state.all_chats[nid] = {"title": "Nova Inteligência", "history": []}
         st.session_state.current_chat_id = nid
         st.session_state.suggestions = []
         st.rerun()
     
     st.write("### Histórico")
     for cid, data in list(st.session_state.all_chats.items()):
-        col1, col2 = st.columns([0.85, 0.15])
+        col1, col2 = st.columns([0.82, 0.18])
         if col1.button(data["title"], key=cid, use_container_width=True):
             st.session_state.current_chat_id = cid
             st.rerun()
@@ -129,23 +154,23 @@ with st.sidebar:
         try:
             models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
             selected_model = st.selectbox("Engine:", models)
-        except: st.error("Erro de Conexão")
+        except: st.error("Erro de Conexão API")
 
 # --- 6. GORA Chat ---
 if menu_opcao == "💬 GORA Chat":
-    st.markdown("## 💬 GORA Intelligence")
+    st.markdown("## 💬 GORA Intelligence Chat")
     
     if not st.session_state.current_chat_id:
         st.info("Inicie um novo ciclo de inteligência no menu lateral.")
     elif selected_model:
         chat_data = st.session_state.all_chats[st.session_state.current_chat_id]
         
-        # Histórico com Layout de Cartões
+        # Histórico com Layout de Cartões Claros
         for message in chat_data["history"]:
             role = "assistant" if message["role"] == "model" else "user"
             with st.chat_message(role): st.markdown(message["parts"][0])
 
-        # Sugestões Ativas
+        # Sugestões Ativas (Botões Neon Soft)
         if st.session_state.suggestions:
             cols = st.columns(len(st.session_state.suggestions))
             for i, sug in enumerate(st.session_state.suggestions):
@@ -154,7 +179,7 @@ if menu_opcao == "💬 GORA Chat":
                     st.rerun()
 
         st.divider()
-        files = st.file_uploader("Upload Multimodal", accept_multiple_files=True, label_visibility="collapsed")
+        files = st.file_uploader("Upload Multimodal (PDF, Word, CSV)", accept_multiple_files=True, label_visibility="collapsed")
         
         prompt = st.chat_input("Comande a GORA...")
         if "prompt_input" in st.session_state:
@@ -193,7 +218,7 @@ if menu_opcao == "💬 GORA Chat":
             chat_data["history"].append({"role": "user", "parts": [prompt]})
             chat_data["history"].append({"role": "model", "parts": [resp_principal]})
             
-            if chat_data["title"] == "Nova Conversa":
+            if chat_data["title"] == "Nova Inteligência":
                 chat_data["title"] = prompt[:20] + "..."
             st.rerun()
 
@@ -216,11 +241,8 @@ elif menu_opcao == "💻 GORA Lab":
             old_stdout = sys.stdout
             sys.stdout = out = StringIO()
             try:
-                # Injetamos o pandas e o streamlit no exec para facilitar
                 exec(code, {'pd': pd, 'np': np, 'st': st})
-                st.markdown('<div class="code-output">', unsafe_allow_html=True)
                 st.code(out.getvalue())
-                st.markdown('</div>', unsafe_allow_html=True)
             except Exception as e: st.error(f"Erro Crítico: {e}")
             finally: sys.stdout = old_stdout
         else:
