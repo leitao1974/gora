@@ -5,3 +5,6 @@ openpyxl
 PyPDF2
 python-docx
 Pillow
+matplotlib
+plotly
+numpy
