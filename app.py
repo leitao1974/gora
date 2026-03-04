@@ -126,7 +126,7 @@ with st.sidebar:
         st.session_state.budget_limit_eur = st.number_input("Teto (€):", min_value=0.1, value=st.session_state.budget_limit_eur, step=1.0)
     
     st.divider()
-    if st.button("➕ NOVO CICLO", key="btn_new", use_container_width=True):
+    if st.button("➕ NOVA TAREFA", key="btn_new", use_container_width=True):
         nid = str(uuid.uuid4())
         st.session_state.all_chats[nid] = {"title": "Nova Inteligência", "history": []}
         st.session_state.current_chat_id = nid
@@ -268,6 +268,7 @@ elif menu_opcao == "💻 GORA Lab":
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
+
 
 
 
