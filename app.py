@@ -15,7 +15,7 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista ---
+# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold) ---
 st.markdown("""
     <style>
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
@@ -51,6 +51,7 @@ def extrair_texto_word(file):
     except: return ""
 
 def calcular_custo(input_tokens, output_tokens):
+    # Preços Gemini 1.5 Flash: Entrada $0.075/1M | Saída $0.30/1M
     custo_in = (input_tokens / 1_000_000) * 0.075
     custo_out = (output_tokens / 1_000_000) * 0.30
     return custo_in + custo_out
@@ -64,6 +65,7 @@ if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
 if "total_usd" not in st.session_state: st.session_state.total_usd = 0.0
 if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = 0
+if "budget_limit" not in st.session_state: st.session_state.budget_limit = 5.0
 
 # --- 5. Barra Lateral GORA ---
 with st.sidebar:
@@ -74,17 +76,30 @@ with st.sidebar:
     menu_opcao = st.radio("Módulos", ["💬 GORA Chat", "💻 GORA Lab"], label_visibility="collapsed")
     
     st.divider()
-    st.write("📈 **Monitor de Recursos**")
+    st.write("📈 **Gestão de Custos**")
+    
+    # Lógica de Alerta Visual
+    progresso_budget = min(st.session_state.total_usd / st.session_state.budget_limit, 1.0)
+    cor_alerta = "#2E7D32" if progresso_budget < 0.8 else "#D32F2F"
+    
     st.markdown(f"""
     <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0; margin-bottom:10px;">
         <div style="color:#2E7D32; font-size:0.75rem; font-weight:bold;">TOKENS ACUMULADOS</div>
         <div style="font-size:1.2rem; font-weight:800;">{st.session_state.total_tokens_session:,}</div>
     </div>
     <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0;">
-        <div style="color:#1565C0; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (USD)</div>
-        <div style="font-size:1.2rem; font-weight:800;">$ {st.session_state.total_usd:.5f}</div>
+        <div style="color:{cor_alerta}; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (USD) / LIMITE</div>
+        <div style="font-size:1.1rem; font-weight:800;">$ {st.session_state.total_usd:.5f} / ${st.session_state.budget_limit:.2f}</div>
     </div>
     """, unsafe_allow_html=True)
+    
+    st.progress(progresso_budget)
+    
+    if st.session_state.total_usd >= st.session_state.budget_limit:
+        st.error(f"⚠️ Limite de ${st.session_state.budget_limit:.2f} atingido!")
+
+    with st.expander("⚙️ Ajustar Limite"):
+        st.session_state.budget_limit = st.number_input("Teto Alvo ($):", min_value=0.1, value=st.session_state.budget_limit, step=1.0)
     
     st.divider()
     if st.button("➕ NOVO CICLO", use_container_width=True):
@@ -228,7 +243,5 @@ elif menu_opcao == "💻 GORA Lab":
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
-
-
 
 
