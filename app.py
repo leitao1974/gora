@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import sys
 import os
+import requests
 import matplotlib.pyplot as plt
 import plotly.express as px
 from io import StringIO
@@ -15,29 +16,43 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold) ---
+# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold + Alertas) ---
 st.markdown("""
     <style>
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
     [data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 2px solid #E0E0E0; }
     h1, h2, h3 { color: #2E7D32 !important; font-weight: 800 !important; letter-spacing: -1px; }
+    
+    /* Forçar Negrito e Tamanho na Navegação */
     div[data-testid="stSidebar"] div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
         font-weight: 800 !important; font-size: 1.2rem !important; color: #1E1E1E !important; margin: 0 !important;
     }
+    
     .stChatMessage {
         background-color: #FFFFFF !important; border: 2px solid #E0E0E0 !important;
         border-radius: 12px !important; box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
         margin-bottom: 15px; padding: 20px !important;
     }
+    
     .stButton button {
         border-radius: 10px !important; border: 2px solid #2E7D32 !important;
         background-color: #FFFFFF !important; color: #2E7D32 !important;
         font-weight: 800 !important; box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
     }
+    
+    .stTextArea textarea { font-family: 'Fira Code', monospace; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. Funções de Suporte ---
+# --- 3. Funções de Suporte e Câmbio ---
+def obter_taxa_eur_usd():
+    try:
+        url = "https://open.er-api.com/v6/latest/USD"
+        response = requests.get(url, timeout=5)
+        return response.json()['rates']['EUR']
+    except:
+        return 0.92  # Fallback
+
 def extrair_texto_pdf(file):
     try:
         reader = PdfReader(file)
@@ -50,11 +65,11 @@ def extrair_texto_word(file):
         return "\n".join([p.text for p in doc.paragraphs])
     except: return ""
 
-def calcular_custo(input_tokens, output_tokens):
-    # Preços Gemini 1.5 Flash: Entrada $0.075/1M | Saída $0.30/1M
-    custo_in = (input_tokens / 1_000_000) * 0.075
-    custo_out = (output_tokens / 1_000_000) * 0.30
-    return custo_in + custo_out
+def calcular_custo_eur(input_tokens, output_tokens, taxa):
+    # Preços Gemini 1.5 Flash em USD: Entrada $0.075/1M | Saída $0.30/1M
+    custo_in_usd = (input_tokens / 1_000_000) * 0.075
+    custo_out_usd = (output_tokens / 1_000_000) * 0.30
+    return (custo_in_usd + custo_out_usd) * taxa
 
 # --- 4. Inicialização de Estado ---
 if "all_chats" not in st.session_state: st.session_state.all_chats = {}
@@ -63,9 +78,12 @@ if "suggestions" not in st.session_state: st.session_state.suggestions = []
 if "code_to_lab" not in st.session_state: st.session_state.code_to_lab = ""
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
-if "total_usd" not in st.session_state: st.session_state.total_usd = 0.0
+
+# Contadores Financeiros em Euro
+if "total_eur" not in st.session_state: st.session_state.total_eur = 0.0
 if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = 0
-if "budget_limit" not in st.session_state: st.session_state.budget_limit = 5.0
+if "budget_limit_eur" not in st.session_state: st.session_state.budget_limit_eur = 5.0
+if "taxa_cambio" not in st.session_state: st.session_state.taxa_cambio = obter_taxa_eur_usd()
 
 # --- 5. Barra Lateral GORA ---
 with st.sidebar:
@@ -78,8 +96,8 @@ with st.sidebar:
     st.divider()
     st.write("📈 **Gestão de Custos**")
     
-    # Lógica de Alerta Visual
-    progresso_budget = min(st.session_state.total_usd / st.session_state.budget_limit, 1.0)
+    # Lógica de Alerta Visual (EUR)
+    progresso_budget = min(st.session_state.total_eur / st.session_state.budget_limit_eur, 1.0)
     cor_alerta = "#2E7D32" if progresso_budget < 0.8 else "#D32F2F"
     
     st.markdown(f"""
@@ -88,18 +106,19 @@ with st.sidebar:
         <div style="font-size:1.2rem; font-weight:800;">{st.session_state.total_tokens_session:,}</div>
     </div>
     <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0;">
-        <div style="color:{cor_alerta}; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (USD) / LIMITE</div>
-        <div style="font-size:1.1rem; font-weight:800;">$ {st.session_state.total_usd:.5f} / ${st.session_state.budget_limit:.2f}</div>
+        <div style="color:{cor_alerta}; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (EUR) / LIMITE</div>
+        <div style="font-size:1.1rem; font-weight:800;">{st.session_state.total_eur:.5f} € / {st.session_state.budget_limit_eur:.2f} €</div>
     </div>
     """, unsafe_allow_html=True)
     
     st.progress(progresso_budget)
+    st.caption(f"Taxa: 1 USD = {st.session_state.taxa_cambio:.4f} EUR")
     
-    if st.session_state.total_usd >= st.session_state.budget_limit:
-        st.error(f"⚠️ Limite de ${st.session_state.budget_limit:.2f} atingido!")
+    if st.session_state.total_eur >= st.session_state.budget_limit_eur:
+        st.error(f"⚠️ Limite de {st.session_state.budget_limit_eur:.2f}€ atingido!")
 
     with st.expander("⚙️ Ajustar Limite"):
-        st.session_state.budget_limit = st.number_input("Teto Alvo ($):", min_value=0.1, value=st.session_state.budget_limit, step=1.0)
+        st.session_state.budget_limit_eur = st.number_input("Teto (€):", min_value=0.1, value=st.session_state.budget_limit_eur, step=1.0)
     
     st.divider()
     if st.button("➕ NOVO CICLO", use_container_width=True):
@@ -177,9 +196,10 @@ if menu_opcao == "💬 GORA Chat":
                         payload[-1] += instruct
                         response = chat_session.send_message(payload)
                         
-                        # --- ATUALIZAÇÃO DOS CONTADORES ---
+                        # --- ATUALIZAÇÃO DOS CONTADORES (EUR) ---
                         usage = response.usage_metadata
-                        st.session_state.total_usd += calcular_custo(usage.prompt_token_count, usage.candidates_token_count)
+                        custo_interacao = calcular_custo_eur(usage.prompt_token_count, usage.candidates_token_count, st.session_state.taxa_cambio)
+                        st.session_state.total_eur += custo_interacao
                         st.session_state.total_tokens_session += (usage.prompt_token_count + usage.candidates_token_count)
 
                         full_text = response.text
@@ -208,12 +228,10 @@ if menu_opcao == "💬 GORA Chat":
 # --- 7. Módulo: GORA Lab ---
 elif menu_opcao == "💻 GORA Lab":
     st.markdown("## 💻 GORA Python Lab")
-    current_code = st.session_state.code_to_lab if st.session_state.code_to_lab else "# GORA Lab\nprint('Pronto para o teste!')"
+    current_code = st.session_state.code_to_lab if st.session_state.code_to_lab else "# GORA Lab\nprint('Teste de Relatório...') "
     
     col_code, col_out = st.columns([1.1, 0.9], gap="large")
-    
     with col_code:
-        st.write("🛠️ **Editor**")
         code = st.text_area("Célula de Código", height=450, value=current_code)
         c1, c2, c3 = st.columns(3)
         exec_btn = c1.button("⚡ EXECUTAR", use_container_width=True)
@@ -231,7 +249,6 @@ elif menu_opcao == "💻 GORA Lab":
             try:
                 exec(code, st.session_state.lab_globals)
                 st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
-                
                 novos = set(os.listdir(".")) - ficheiros_antes
                 if novos:
                     st.divider()
@@ -243,5 +260,6 @@ elif menu_opcao == "💻 GORA Lab":
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
+
 
 
