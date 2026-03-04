@@ -16,7 +16,7 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold + Alertas) ---
+# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold + Alertas + Célula Branca) ---
 st.markdown("""
     <style>
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
@@ -39,19 +39,18 @@ st.markdown("""
         background-color: #FFFFFF !important; color: #2E7D32 !important;
         font-weight: 800 !important; box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
     }
-    
-    .stTextArea textarea { font-family: 'Fira Code', monospace; }
-    </style>
-    """, unsafe_allow_html=True)
 
-    }
+    /* Editor de Código - FUNDO BRANCO */
     .stTextArea textarea { 
         font-family: 'Fira Code', monospace !important; 
         background-color: #FFFFFF !important; 
         color: #0056b3 !important; 
-        border: 2px solid #2E7D32 !important; /* Borda Verde GORA para destaque */
+        border: 2px solid #2E7D32 !important;
         box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.1) !important;
+        font-size: 14px !important;
     }
+    </style>
+    """, unsafe_allow_html=True)
 
 # --- 3. Funções de Suporte e Câmbio ---
 def obter_taxa_eur_usd():
@@ -75,7 +74,6 @@ def extrair_texto_word(file):
     except: return ""
 
 def calcular_custo_eur(input_tokens, output_tokens, taxa):
-    # Preços Gemini 1.5 Flash em USD: Entrada $0.075/1M | Saída $0.30/1M
     custo_in_usd = (input_tokens / 1_000_000) * 0.075
     custo_out_usd = (output_tokens / 1_000_000) * 0.30
     return (custo_in_usd + custo_out_usd) * taxa
@@ -88,7 +86,6 @@ if "code_to_lab" not in st.session_state: st.session_state.code_to_lab = ""
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
 
-# Contadores Financeiros em Euro
 if "total_eur" not in st.session_state: st.session_state.total_eur = 0.0
 if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = 0
 if "budget_limit_eur" not in st.session_state: st.session_state.budget_limit_eur = 5.0
@@ -105,7 +102,6 @@ with st.sidebar:
     st.divider()
     st.write("📈 **Gestão de Custos**")
     
-    # Lógica de Alerta Visual (EUR)
     progresso_budget = min(st.session_state.total_eur / st.session_state.budget_limit_eur, 1.0)
     cor_alerta = "#2E7D32" if progresso_budget < 0.8 else "#D32F2F"
     
@@ -130,7 +126,7 @@ with st.sidebar:
         st.session_state.budget_limit_eur = st.number_input("Teto (€):", min_value=0.1, value=st.session_state.budget_limit_eur, step=1.0)
     
     st.divider()
-    if st.button("➕ NOVO CICLO", use_container_width=True):
+    if st.button("➕ NOVO CICLO", key="btn_new", use_container_width=True):
         nid = str(uuid.uuid4())
         st.session_state.all_chats[nid] = {"title": "Nova Inteligência", "history": []}
         st.session_state.current_chat_id = nid
@@ -140,7 +136,7 @@ with st.sidebar:
     st.write("### Histórico")
     for cid, data in list(st.session_state.all_chats.items()):
         col1, col2 = st.columns([0.8, 0.2])
-        if col1.button(data["title"], key=cid, use_container_width=True):
+        if col1.button(data["title"], key=f"chat_{cid}", use_container_width=True):
             st.session_state.current_chat_id = cid
             st.rerun()
         if col2.button("×", key=f"del_{cid}"):
@@ -205,7 +201,7 @@ if menu_opcao == "💬 GORA Chat":
                         payload[-1] += instruct
                         response = chat_session.send_message(payload)
                         
-                        # --- ATUALIZAÇÃO DOS CONTADORES (EUR) ---
+                        # --- ATUALIZAÇÃO DOS CONTADORES ---
                         usage = response.usage_metadata
                         custo_interacao = calcular_custo_eur(usage.prompt_token_count, usage.candidates_token_count, st.session_state.taxa_cambio)
                         st.session_state.total_eur += custo_interacao
@@ -241,6 +237,7 @@ elif menu_opcao == "💻 GORA Lab":
     
     col_code, col_out = st.columns([1.1, 0.9], gap="large")
     with col_code:
+        st.write("🛠️ **Editor**")
         code = st.text_area("Célula de Código", height=450, value=current_code)
         c1, c2, c3 = st.columns(3)
         exec_btn = c1.button("⚡ EXECUTAR", use_container_width=True)
@@ -256,8 +253,10 @@ elif menu_opcao == "💻 GORA Lab":
             old_stdout = sys.stdout
             sys.stdout = out = StringIO()
             try:
+                # O dicionário 'lab_globals' permite persistência estilo Colab
                 exec(code, st.session_state.lab_globals)
                 st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
+                
                 novos = set(os.listdir(".")) - ficheiros_antes
                 if novos:
                     st.divider()
