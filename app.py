@@ -86,6 +86,12 @@ def extrair_texto_word(file):
         return "\n".join([p.text for p in doc.paragraphs])
     except: return ""
 
+def calcular_custo(input_tokens, output_tokens):
+    # Preços Gemini 1.5 Flash: Entrada $0.075/1M | Saída $0.30/1M
+    custo_in = (input_tokens / 1_000_000) * 0.075
+    custo_out = (output_tokens / 1_000_000) * 0.30
+    return custo_in + custo_out
+
 # --- 4. Inicialização de Estado ---
 if "all_chats" not in st.session_state: st.session_state.all_chats = {}
 if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = None
@@ -93,6 +99,8 @@ if "suggestions" not in st.session_state: st.session_state.suggestions = []
 if "code_to_lab" not in st.session_state: st.session_state.code_to_lab = ""
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
+if "total_usd" not in st.session_state: st.session_state.total_usd = 0.0
+if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = 0
 
 # --- 5. Barra Lateral GORA ---
 with st.sidebar:
@@ -105,6 +113,19 @@ with st.sidebar:
         ["💬 GORA Chat", "💻 GORA Lab"], 
         label_visibility="collapsed"
     )
+st.divider()
+    st.write("📈 **Monitor de Recursos**")
+    
+    st.markdown(f"""
+    <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0; margin-bottom:10px;">
+        <div style="color:#2E7D32; font-size:0.75rem; font-weight:bold;">TOKENS ACUMULADOS</div>
+        <div style="font-size:1.2rem; font-weight:800;">{st.session_state.total_tokens_session:,}</div>
+    </div>
+    <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0;">
+        <div style="color:#1565C0; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (USD)</div>
+        <div style="font-size:1.2rem; font-weight:800;">$ {st.session_state.total_usd:.5f}</div>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
     if st.button("➕ NOVO CICLO", use_container_width=True):
@@ -204,6 +225,17 @@ if menu_opcao == "💬 GORA Chat":
                     except Exception as e:
                         if "429" in str(e): st.error("⚠️ Quota atingida. Aguarde 60s.")
                         else: st.error(f"Erro: {e}")
+# Chamada da API
+                        response = chat_session.send_message(payload)
+                        
+                        # --- ATUALIZAÇÃO DOS CONTADORES ---
+                        usage = response.usage_metadata
+                        in_t = usage.prompt_token_count
+                        out_t = usage.candidates_token_count
+                        
+                        st.session_state.total_usd += calcular_custo(in_t, out_t)
+                        st.session_state.total_tokens_session += (in_t + out_t)
+                        # ---------------------------------
 
 # --- 7. Módulo: GORA Lab ---
 elif menu_opcao == "💻 GORA Lab":
@@ -243,5 +275,6 @@ elif menu_opcao == "💻 GORA Lab":
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
+
 
 
