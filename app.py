@@ -15,60 +15,24 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold) ---
+# --- 2. CSS Vanguardista ---
 st.markdown("""
     <style>
-    /* Global */
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
-    
-    /* Sidebar */
-    [data-testid="stSidebar"] { 
-        background-color: #FFFFFF !important; 
-        border-right: 2px solid #E0E0E0; 
-    }
-
-    /* Títulos GORA */
+    [data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 2px solid #E0E0E0; }
     h1, h2, h3 { color: #2E7D32 !important; font-weight: 800 !important; letter-spacing: -1px; }
-
-    /* NAVEGAÇÃO LATERAL - FORÇAR NEGRITO E COR */
-    /* Alvo: O texto das opções do rádio */
     div[data-testid="stSidebar"] div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-        font-weight: 800 !important;
-        font-size: 1.2rem !important;
-        color: #1E1E1E !important;
-        margin: 0 !important;
+        font-weight: 800 !important; font-size: 1.2rem !important; color: #1E1E1E !important; margin: 0 !important;
     }
-
-    /* Alvo: O círculo do rádio (selecionado) */
-    div[data-testid="stSidebar"] div[role="radiogroup"] input[checked] + div {
-        background-color: #2E7D32 !important;
-        border-color: #2E7D32 !important;
-    }
-
-    /* Cartões de Chat - Neo-Brutalismo */
     .stChatMessage {
-        background-color: #FFFFFF !important;
-        border: 2px solid #E0E0E0 !important;
-        border-radius: 12px !important;
-        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
-        margin-bottom: 15px;
-        padding: 20px !important;
+        background-color: #FFFFFF !important; border: 2px solid #E0E0E0 !important;
+        border-radius: 12px !important; box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
+        margin-bottom: 15px; padding: 20px !important;
     }
-    
-    /* Botões GORA Signature */
     .stButton button {
-        border-radius: 10px !important;
-        border: 2px solid #2E7D32 !important;
-        background-color: #FFFFFF !important;
-        color: #2E7D32 !important;
-        font-weight: 800 !important;
-        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
-    }
-    .stButton button:hover { 
-        background-color: #2E7D32 !important; 
-        color: white !important; 
-        transform: translate(-2px, -2px); 
-        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3); 
+        border-radius: 10px !important; border: 2px solid #2E7D32 !important;
+        background-color: #FFFFFF !important; color: #2E7D32 !important;
+        font-weight: 800 !important; box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -87,7 +51,6 @@ def extrair_texto_word(file):
     except: return ""
 
 def calcular_custo(input_tokens, output_tokens):
-    # Preços Gemini 1.5 Flash: Entrada $0.075/1M | Saída $0.30/1M
     custo_in = (input_tokens / 1_000_000) * 0.075
     custo_out = (output_tokens / 1_000_000) * 0.30
     return custo_in + custo_out
@@ -108,14 +71,10 @@ with st.sidebar:
     st.title("GORA Workspace")
     
     st.write("### Navegação")
-    menu_opcao = st.radio(
-        "Módulos", 
-        ["💬 GORA Chat", "💻 GORA Lab"], 
-        label_visibility="collapsed"
-    )
-st.divider()
-    st.write("📈 **Monitor de Recursos**")
+    menu_opcao = st.radio("Módulos", ["💬 GORA Chat", "💻 GORA Lab"], label_visibility="collapsed")
     
+    st.divider()
+    st.write("📈 **Monitor de Recursos**")
     st.markdown(f"""
     <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0; margin-bottom:10px;">
         <div style="color:#2E7D32; font-size:0.75rem; font-weight:bold;">TOKENS ACUMULADOS</div>
@@ -203,6 +162,11 @@ if menu_opcao == "💬 GORA Chat":
                         payload[-1] += instruct
                         response = chat_session.send_message(payload)
                         
+                        # --- ATUALIZAÇÃO DOS CONTADORES ---
+                        usage = response.usage_metadata
+                        st.session_state.total_usd += calcular_custo(usage.prompt_token_count, usage.candidates_token_count)
+                        st.session_state.total_tokens_session += (usage.prompt_token_count + usage.candidates_token_count)
+
                         full_text = response.text
                         main_resp = full_text.split("CÓDIGO:")[0].split("SUGESTÕES:")[0].strip()
                         
@@ -225,17 +189,6 @@ if menu_opcao == "💬 GORA Chat":
                     except Exception as e:
                         if "429" in str(e): st.error("⚠️ Quota atingida. Aguarde 60s.")
                         else: st.error(f"Erro: {e}")
-# Chamada da API
-                        response = chat_session.send_message(payload)
-                        
-                        # --- ATUALIZAÇÃO DOS CONTADORES ---
-                        usage = response.usage_metadata
-                        in_t = usage.prompt_token_count
-                        out_t = usage.candidates_token_count
-                        
-                        st.session_state.total_usd += calcular_custo(in_t, out_t)
-                        st.session_state.total_tokens_session += (in_t + out_t)
-                        # ---------------------------------
 
 # --- 7. Módulo: GORA Lab ---
 elif menu_opcao == "💻 GORA Lab":
@@ -271,10 +224,11 @@ elif menu_opcao == "💻 GORA Lab":
                     for f in novos:
                         if os.path.isfile(f):
                             with open(f, "rb") as f_data:
-                                st.download_button(label=f"📥 Baixar {f}", data=f_data, file_name=f, use_container_width=True)
+                                st.download_button(label=f"📥 Baixar {f}", data=f_data, file_name=f, key=f"dl_{f}", use_container_width=True)
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
+
 
 
 
