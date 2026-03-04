@@ -44,6 +44,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+    }
+    .stTextArea textarea { 
+        font-family: 'Fira Code', monospace !important; 
+        background-color: #FFFFFF !important; 
+        color: #0056b3 !important; 
+        border: 2px solid #2E7D32 !important; /* Borda Verde GORA para destaque */
+        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.1) !important;
+    }
+
 # --- 3. Funções de Suporte e Câmbio ---
 def obter_taxa_eur_usd():
     try:
@@ -260,6 +269,7 @@ elif menu_opcao == "💻 GORA Lab":
             except Exception as e: st.error(f"Erro no Script: {e}")
             finally: sys.stdout = old_stdout
         else: st.info("O resultado aparecerá aqui.")
+
 
 
 
