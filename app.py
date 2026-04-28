@@ -9,266 +9,162 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from io import StringIO
 import uuid
-from PyPDF2 import PdfReader
+import json
+import time
 from docx import Document
 from PIL import Image
 
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. CSS Vanguardista (Interface Clara + Sidebar Bold + Alertas + Célula Branca) ---
+# --- 2. Persistência de Dados (Custos) ---
+def carregar_stats():
+    if os.path.exists("gora_stats.json"):
+        try:
+            with open("gora_stats.json", "r") as f:
+                return json.load(f)
+        except: pass
+    return {"total_eur": 0.0, "total_tokens": 0}
+
+def salvar_stats(eur, tokens):
+    with open("gora_stats.json", "w") as f:
+        json.dump({"total_eur": eur, "total_tokens": tokens}, f)
+
+# --- 3. CSS Vanguardista ---
 st.markdown("""
     <style>
     .stApp { background-color: #F0F2F6; color: #1E1E1E; font-family: 'Inter', sans-serif; }
     [data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 2px solid #E0E0E0; }
     h1, h2, h3 { color: #2E7D32 !important; font-weight: 800 !important; letter-spacing: -1px; }
-    
-    /* Forçar Negrito e Tamanho na Navegação */
-    div[data-testid="stSidebar"] div[role="radiogroup"] label div[data-testid="stMarkdownContainer"] p {
-        font-weight: 800 !important; font-size: 1.2rem !important; color: #1E1E1E !important; margin: 0 !important;
-    }
-    
     .stChatMessage {
         background-color: #FFFFFF !important; border: 2px solid #E0E0E0 !important;
         border-radius: 12px !important; box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
         margin-bottom: 15px; padding: 20px !important;
     }
-    
     .stButton button {
         border-radius: 10px !important; border: 2px solid #2E7D32 !important;
         background-color: #FFFFFF !important; color: #2E7D32 !important;
         font-weight: 800 !important; box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2);
     }
-
-    /* Editor de Código - FUNDO BRANCO */
-    .stTextArea textarea { 
-        font-family: 'Fira Code', monospace !important; 
-        background-color: #FFFFFF !important; 
-        color: #0056b3 !important; 
-        border: 2px solid #2E7D32 !important;
-        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.1) !important;
-        font-size: 14px !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. Funções de Suporte e Câmbio ---
+# --- 4. Funções de Suporte ---
+@st.cache_data(ttl=3600)
 def obter_taxa_eur_usd():
     try:
-        url = "https://open.er-api.com/v6/latest/USD"
-        response = requests.get(url, timeout=5)
-        return response.json()['rates']['EUR']
-    except:
-        return 0.92  # Fallback
-
-def extrair_texto_pdf(file):
-    try:
-        reader = PdfReader(file)
-        return "".join([p.extract_text() for p in reader.pages[:15]])
-    except: return ""
-
-def extrair_texto_word(file):
-    try:
-        doc = Document(file)
-        return "\n".join([p.text for p in doc.paragraphs])
-    except: return ""
+        return requests.get("https://open.er-api.com/v6/latest/USD", timeout=5).json()['rates']['EUR']
+    except: return 0.92
 
 def calcular_custo_eur(input_tokens, output_tokens, taxa):
-    custo_in_usd = (input_tokens / 1_000_000) * 0.075
-    custo_out_usd = (output_tokens / 1_000_000) * 0.30
-    return (custo_in_usd + custo_out_usd) * taxa
+    # Tabela 2026: Input $0.30/1M, Output $1.20/1M
+    return ((input_tokens / 1e6 * 0.30) + (output_tokens / 1e6 * 1.20)) * taxa
 
-# --- 4. Inicialização de Estado ---
+def enviar_para_google(uploaded_file):
+    """Upload via File API para PDFs longos"""
+    temp_path = f"temp_{uploaded_file.name}"
+    with open(temp_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
+    
+    g_file = genai.upload_file(path=temp_path, display_name=uploaded_file.name)
+    
+    while g_file.state.name == "PROCESSING":
+        time.sleep(2)
+        g_file = genai.get_file(g_file.name)
+    
+    os.remove(temp_path)
+    return g_file
+
+# --- 5. Inicialização de Estado ---
+stats_iniciais = carregar_stats()
 if "all_chats" not in st.session_state: st.session_state.all_chats = {}
 if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = None
-if "suggestions" not in st.session_state: st.session_state.suggestions = []
-if "code_to_lab" not in st.session_state: st.session_state.code_to_lab = ""
+if "total_eur" not in st.session_state: st.session_state.total_eur = stats_iniciais["total_eur"]
+if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = stats_iniciais["total_tokens"]
+if "taxa_cambio" not in st.session_state: st.session_state.taxa_cambio = obter_taxa_eur_usd()
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
 
-if "total_eur" not in st.session_state: st.session_state.total_eur = 0.0
-if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = 0
-if "budget_limit_eur" not in st.session_state: st.session_state.budget_limit_eur = 5.0
-if "taxa_cambio" not in st.session_state: st.session_state.taxa_cambio = obter_taxa_eur_usd()
-
-# --- 5. Barra Lateral GORA ---
+# --- 6. Barra Lateral ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=90)
+    st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=60)
     st.title("GORA Workspace")
     
-    st.write("### Navegação")
-    menu_opcao = st.radio("Módulos", ["💬 GORA Chat", "💻 GORA Lab"], label_visibility="collapsed")
+    menu = st.radio("Navegação", ["💬 GORA Chat", "💻 GORA Lab"])
     
     st.divider()
-    st.write("📈 **Gestão de Custos**")
+    st.write("📈 **Custos Acumulados**")
+    st.metric("Total Investido", f"{st.session_state.total_eur:.4f} €")
+    st.caption(f"Tokens: {st.session_state.total_tokens_session:,}")
     
-    progresso_budget = min(st.session_state.total_eur / st.session_state.budget_limit_eur, 1.0)
-    cor_alerta = "#2E7D32" if progresso_budget < 0.8 else "#D32F2F"
-    
-    st.markdown(f"""
-    <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0; margin-bottom:10px;">
-        <div style="color:#2E7D32; font-size:0.75rem; font-weight:bold;">TOKENS ACUMULADOS</div>
-        <div style="font-size:1.2rem; font-weight:800;">{st.session_state.total_tokens_session:,}</div>
-    </div>
-    <div style="padding:10px; border-radius:10px; background:#f9f9f9; border:1px solid #e0e0e0;">
-        <div style="color:{cor_alerta}; font-size:0.75rem; font-weight:bold;">INVESTIMENTO (EUR) / LIMITE</div>
-        <div style="font-size:1.1rem; font-weight:800;">{st.session_state.total_eur:.5f} € / {st.session_state.budget_limit_eur:.2f} €</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.progress(progresso_budget)
-    st.caption(f"Taxa: 1 USD = {st.session_state.taxa_cambio:.4f} EUR")
-    
-    if st.session_state.total_eur >= st.session_state.budget_limit_eur:
-        st.error(f"⚠️ Limite de {st.session_state.budget_limit_eur:.2f}€ atingido!")
-
-    with st.expander("⚙️ Ajustar Limite"):
-        st.session_state.budget_limit_eur = st.number_input("Teto (€):", min_value=0.1, value=st.session_state.budget_limit_eur, step=1.0)
-    
-    st.divider()
-    if st.button("➕ NOVA TAREFA", key="btn_new", use_container_width=True):
-        nid = str(uuid.uuid4())
-        st.session_state.all_chats[nid] = {"title": "Nova Inteligência", "history": []}
-        st.session_state.current_chat_id = nid
-        st.session_state.suggestions = []
+    if st.button("Resetar Contador Local"):
+        st.session_state.total_eur = 0.0
+        st.session_state.total_tokens_session = 0
+        salvar_stats(0.0, 0)
         st.rerun()
-    
-    st.write("### Histórico")
-    for cid, data in list(st.session_state.all_chats.items()):
-        col1, col2 = st.columns([0.8, 0.2])
-        if col1.button(data["title"], key=f"chat_{cid}", use_container_width=True):
-            st.session_state.current_chat_id = cid
-            st.rerun()
-        if col2.button("×", key=f"del_{cid}"):
-            del st.session_state.all_chats[cid]
-            if st.session_state.current_chat_id == cid: st.session_state.current_chat_id = None
-            st.rerun()
 
     st.divider()
     api_key = st.secrets.get("GOOGLE_API_KEY", st.text_input("Gemini API Key", type="password"))
-    selected_model = None
     if api_key:
         genai.configure(api_key=api_key)
-        try:
-            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            selected_model = st.selectbox("Engine:", models, index=0)
-        except: st.error("Erro na API Key.")
+        model_choice = st.selectbox("Modelo:", ["gemini-2.5-flash", "gemini-1.5-pro"])
 
-# --- 6. Módulo: GORA Chat ---
-if menu_opcao == "💬 GORA Chat":
-    st.markdown("## 💬 GORA Intelligence Chat")
-    
+# --- 7. Módulo Chat ---
+if menu == "💬 GORA Chat":
     if not st.session_state.current_chat_id:
-        st.info("Inicie um ciclo de inteligência na barra lateral.")
-    elif selected_model:
-        chat_data = st.session_state.all_chats[st.session_state.current_chat_id]
-        
-        for message in chat_data["history"]:
-            with st.chat_message("assistant" if message["role"] == "model" else "user"):
-                st.markdown(message["parts"][0])
+        if st.button("➕ INICIAR NOVA ANÁLISE"):
+            nid = str(uuid.uuid4())
+            st.session_state.all_chats[nid] = {"title": "Nova Análise", "history": []}
+            st.session_state.current_chat_id = nid
+            st.rerun()
+    else:
+        chat = st.session_state.all_chats[st.session_state.current_chat_id]
+        for m in chat["history"]:
+            with st.chat_message(m["role"]): st.markdown(m["parts"][0])
 
-        if st.session_state.suggestions:
-            st.write("💡 **Caminhos Sugeridos:**")
-            cols = st.columns(len(st.session_state.suggestions))
-            for i, sug in enumerate(st.session_state.suggestions):
-                if cols[i].button(f"✨ {sug}", key=f"sug_{i}", use_container_width=True):
-                    st.session_state.prompt_input = sug
-                    st.rerun()
-
-        files = st.file_uploader("Arquivos", accept_multiple_files=True, label_visibility="collapsed")
-        prompt = st.chat_input("Comande a GORA...")
-        if "prompt_input" in st.session_state: prompt = st.session_state.pop("prompt_input")
+        files = st.file_uploader("Upload de Processos (PDF)", accept_multiple_files=True)
+        prompt = st.chat_input("Comando...")
 
         if prompt:
             with st.chat_message("user"): st.markdown(prompt)
-            contexto = ""
-            payload = [prompt]
-            for f in files:
-                if f.type.startswith('image/'): payload.append(Image.open(f))
-                elif f.name.endswith('.pdf'): contexto += f"\n[Doc: {f.name}] {extrair_texto_pdf(f)}"
-                elif f.name.endswith('.docx'): contexto += f"\n[Doc: {f.name}] {extrair_texto_word(f)}"
-                elif f.name.endswith('.csv'): contexto += f"\n[CSV: {f.name}] {pd.read_csv(f).head().to_string()}"
-
-            if contexto: payload.insert(0, f"CONTEXTO:\n{contexto}")
-
-            model = genai.GenerativeModel(selected_model)
-            chat_session = model.start_chat(history=chat_data["history"])
             
-            with st.chat_message("assistant"):
-                with st.spinner("GORA a processar..."):
-                    try:
-                        instruct = "\n\nResponde e, se gerares código, termina com 'CÓDIGO:' e o bloco. Termina SEMPRE com 'SUGESTÕES:' e 3 perguntas curtas."
-                        payload[-1] += instruct
-                        response = chat_session.send_message(payload)
-                        
-                        # --- ATUALIZAÇÃO DOS CONTADORES ---
-                        usage = response.usage_metadata
-                        custo_interacao = calcular_custo_eur(usage.prompt_token_count, usage.candidates_token_count, st.session_state.taxa_cambio)
-                        st.session_state.total_eur += custo_interacao
-                        st.session_state.total_tokens_session += (usage.prompt_token_count + usage.candidates_token_count)
+            conteudo = [prompt]
+            if files:
+                with st.spinner("GORA a processar PDFs longos..."):
+                    for f in files:
+                        if f.type == "application/pdf":
+                            conteudo.append(enviar_para_google(f))
+                        else:
+                            conteudo.append(Image.open(f))
 
-                        full_text = response.text
-                        main_resp = full_text.split("CÓDIGO:")[0].split("SUGESTÕES:")[0].strip()
-                        
-                        if "CÓDIGO:" in full_text:
-                            code_part = full_text.split("CÓDIGO:")[1].split("SUGESTÕES:")[0].strip()
-                            st.session_state.code_to_lab = code_part.replace('```python', '').replace('```', '')
-                            st.success("💻 Código detetado!")
-                            if st.button("🚀 TRANSFERIR PARA O LAB"): st.toast("Transferido!")
-
-                        st.markdown(main_resp)
-                        
-                        if "SUGESTÕES:" in full_text:
-                            sugs = full_text.split("SUGESTÕES:")[1].split(",")
-                            st.session_state.suggestions = [s.strip() for s in sugs][:3]
-
-                        chat_data["history"].append({"role": "user", "parts": [prompt]})
-                        chat_data["history"].append({"role": "model", "parts": [main_resp]})
-                        if chat_data["title"] == "Nova Inteligência": chat_data["title"] = prompt[:20] + "..."
-                        st.rerun()
-                    except Exception as e:
-                        if "429" in str(e): st.error("⚠️ Quota atingida. Aguarde 60s.")
-                        else: st.error(f"Erro: {e}")
-
-# --- 7. Módulo: GORA Lab ---
-elif menu_opcao == "💻 GORA Lab":
-    st.markdown("## 💻 GORA Python Lab")
-    current_code = st.session_state.code_to_lab if st.session_state.code_to_lab else "# GORA Lab\nprint('Teste de Relatório...') "
-    
-    col_code, col_out = st.columns([1.1, 0.9], gap="large")
-    with col_code:
-        st.write("🛠️ **Editor**")
-        code = st.text_area("Célula de Código", height=450, value=current_code)
-        c1, c2, c3 = st.columns(3)
-        exec_btn = c1.button("⚡ EXECUTAR", use_container_width=True)
-        if c2.button("🧹 LIMPAR", use_container_width=True):
-            st.session_state.code_to_lab = ""
-            st.rerun()
-        c3.download_button("💾 EXPORTAR .PY", code, file_name="gora.py", use_container_width=True)
-
-    with col_out:
-        st.write("📊 **Output & Documentos**")
-        if exec_btn:
-            ficheiros_antes = set(os.listdir("."))
-            old_stdout = sys.stdout
-            sys.stdout = out = StringIO()
             try:
-                # O dicionário 'lab_globals' permite persistência estilo Colab
-                exec(code, st.session_state.lab_globals)
-                st.code(out.getvalue() if out.getvalue() else "Executado com sucesso.")
+                m = genai.GenerativeModel(model_choice)
+                chat_sess = m.start_chat(history=chat["history"])
+                response = chat_sess.send_message(conteudo)
                 
-                novos = set(os.listdir(".")) - ficheiros_antes
-                if novos:
-                    st.divider()
-                    st.write("📂 **Ficheiros Produzidos:**")
-                    for f in novos:
-                        if os.path.isfile(f):
-                            with open(f, "rb") as f_data:
-                                st.download_button(label=f"📥 Baixar {f}", data=f_data, file_name=f, key=f"dl_{f}", use_container_width=True)
-            except Exception as e: st.error(f"Erro no Script: {e}")
-            finally: sys.stdout = old_stdout
-        else: st.info("O resultado aparecerá aqui.")
+                # Atualizar Custos e Persistir
+                u = response.usage_metadata
+                custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio)
+                st.session_state.total_eur += custo
+                st.session_state.total_tokens_session += u.total_token_count
+                salvar_stats(st.session_state.total_eur, st.session_state.total_tokens_session)
 
+                st.chat_message("assistant").markdown(response.text)
+                chat["history"].append({"role": "user", "parts": [prompt]})
+                chat["history"].append({"role": "model", "parts": [response.text]})
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
+# --- 8. Módulo Lab ---
+elif menu == "💻 GORA Lab":
+    st.markdown("## 💻 GORA Python Lab")
+    code = st.text_area("Script Python", height=300, placeholder="Escreva o código aqui...")
+    if st.button("⚡ Executar"):
+        try:
+            exec(code, st.session_state.lab_globals)
+            st.success("Sucesso.")
+        except Exception as e: st.error(e)
 
 
 
