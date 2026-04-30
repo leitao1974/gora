@@ -17,18 +17,25 @@ from PIL import Image
 # --- 1. Configuração da Página ---
 st.set_page_config(page_title="GORA Workspace", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. Persistência de Dados (Custos) ---
-def carregar_stats():
-    if os.path.exists("gora_stats.json"):
+# --- 2. Persistência de Dados (Custos e Conversas) ---
+# Unificamos tudo num ficheiro para evitar inconsistências
+DB_FILE = "gora_database.json"
+
+def carregar_dados():
+    if os.path.exists(DB_FILE):
         try:
-            with open("gora_stats.json", "r") as f:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except: pass
-    return {"total_eur": 0.0, "total_tokens": 0}
+    return {
+        "total_eur": 0.0, 
+        "total_tokens": 0,
+        "all_chats": {} 
+    }
 
-def salvar_stats(eur, tokens):
-    with open("gora_stats.json", "w") as f:
-        json.dump({"total_eur": eur, "total_tokens": tokens}, f)
+def salvar_dados(dados):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
 
 # --- 3. CSS Vanguardista ---
 st.markdown("""
@@ -57,31 +64,32 @@ def obter_taxa_eur_usd():
     except: return 0.92
 
 def calcular_custo_eur(input_tokens, output_tokens, taxa):
-    # Tabela 2026: Input $0.30/1M, Output $1.20/1M
     return ((input_tokens / 1e6 * 0.30) + (output_tokens / 1e6 * 1.20)) * taxa
 
 def enviar_para_google(uploaded_file):
-    """Upload via File API para PDFs longos"""
     temp_path = f"temp_{uploaded_file.name}"
     with open(temp_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
-    
     g_file = genai.upload_file(path=temp_path, display_name=uploaded_file.name)
-    
     while g_file.state.name == "PROCESSING":
         time.sleep(2)
         g_file = genai.get_file(g_file.name)
-    
     os.remove(temp_path)
     return g_file
 
 # --- 5. Inicialização de Estado ---
-stats_iniciais = carregar_stats()
-if "all_chats" not in st.session_state: st.session_state.all_chats = {}
-if "current_chat_id" not in st.session_state: st.session_state.current_chat_id = None
-if "total_eur" not in st.session_state: st.session_state.total_eur = stats_iniciais["total_eur"]
-if "total_tokens_session" not in st.session_state: st.session_state.total_tokens_session = stats_iniciais["total_tokens"]
-if "taxa_cambio" not in st.session_state: st.session_state.taxa_cambio = obter_taxa_eur_usd()
+db = carregar_dados()
+
+if "total_eur" not in st.session_state: 
+    st.session_state.total_eur = db["total_eur"]
+if "total_tokens_session" not in st.session_state: 
+    st.session_state.total_tokens_session = db["total_tokens"]
+if "all_chats" not in st.session_state: 
+    st.session_state.all_chats = db["all_chats"]
+if "current_chat_id" not in st.session_state: 
+    st.session_state.current_chat_id = None
+if "taxa_cambio" not in st.session_state: 
+    st.session_state.taxa_cambio = obter_taxa_eur_usd()
 if "lab_globals" not in st.session_state:
     st.session_state.lab_globals = {'pd': pd, 'np': np, 'plt': plt, 'px': px, 'st': st}
 
@@ -89,7 +97,6 @@ if "lab_globals" not in st.session_state:
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=60)
     st.title("GORA Workspace")
-    
     menu = st.radio("Navegação", ["💬 GORA Chat", "💻 GORA Lab"])
     
     st.divider()
@@ -97,11 +104,19 @@ with st.sidebar:
     st.metric("Total Investido", f"{st.session_state.total_eur:.4f} €")
     st.caption(f"Tokens: {st.session_state.total_tokens_session:,}")
     
-    if st.button("Resetar Contador Local"):
+    if st.button("Resetar Tudo (Local)"):
         st.session_state.total_eur = 0.0
         st.session_state.total_tokens_session = 0
-        salvar_stats(0.0, 0)
+        st.session_state.all_chats = {}
+        salvar_dados({"total_eur": 0.0, "total_tokens": 0, "all_chats": {}})
         st.rerun()
+
+    st.divider()
+    st.write("### Histórico de Conversas")
+    for cid, data in st.session_state.all_chats.items():
+        if st.button(data["title"], key=f"btn_{cid}", use_container_width=True):
+            st.session_state.current_chat_id = cid
+            st.rerun()
 
     st.divider()
     api_key = st.secrets.get("GOOGLE_API_KEY", st.text_input("Gemini API Key", type="password"))
@@ -114,12 +129,23 @@ if menu == "💬 GORA Chat":
     if not st.session_state.current_chat_id:
         if st.button("➕ INICIAR NOVA ANÁLISE"):
             nid = str(uuid.uuid4())
-            st.session_state.all_chats[nid] = {"title": "Nova Análise", "history": []}
+            st.session_state.all_chats[nid] = {"title": f"Análise {len(st.session_state.all_chats)+1}", "history": []}
             st.session_state.current_chat_id = nid
+            # Guardar imediatamente no ficheiro
+            db["all_chats"] = st.session_state.all_chats
+            salvar_dados(db)
             st.rerun()
     else:
-        chat = st.session_state.all_chats[st.session_state.current_chat_id]
-        for m in chat["history"]:
+        chat_context = st.session_state.all_chats[st.session_state.current_chat_id]
+        
+        # Botão para voltar à lista
+        if st.button("⬅ Voltar à lista"):
+            st.session_state.current_chat_id = None
+            st.rerun()
+
+        st.write(f"### {chat_context['title']}")
+        
+        for m in chat_context["history"]:
             with st.chat_message(m["role"]): st.markdown(m["parts"][0])
 
         files = st.file_uploader("Upload de Processos (PDF)", accept_multiple_files=True)
@@ -130,7 +156,7 @@ if menu == "💬 GORA Chat":
             
             conteudo = [prompt]
             if files:
-                with st.spinner("GORA a processar PDFs longos..."):
+                with st.spinner("GORA a processar..."):
                     for f in files:
                         if f.type == "application/pdf":
                             conteudo.append(enviar_para_google(f))
@@ -139,19 +165,27 @@ if menu == "💬 GORA Chat":
 
             try:
                 m = genai.GenerativeModel(model_choice)
-                chat_sess = m.start_chat(history=chat["history"])
+                chat_sess = m.start_chat(history=chat_context["history"])
                 response = chat_sess.send_message(conteudo)
                 
-                # Atualizar Custos e Persistir
+                # Atualizar Estado e Base de Dados
                 u = response.usage_metadata
                 custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio)
+                
                 st.session_state.total_eur += custo
                 st.session_state.total_tokens_session += u.total_token_count
-                salvar_stats(st.session_state.total_eur, st.session_state.total_tokens_session)
+                
+                # Adicionar ao histórico
+                chat_context["history"].append({"role": "user", "parts": [prompt]})
+                chat_context["history"].append({"role": "model", "parts": [response.text]})
+                
+                # Sincronizar com o ficheiro JSON
+                db["total_eur"] = st.session_state.total_eur
+                db["total_tokens"] = st.session_state.total_tokens_session
+                db["all_chats"] = st.session_state.all_chats
+                salvar_dados(db)
 
                 st.chat_message("assistant").markdown(response.text)
-                chat["history"].append({"role": "user", "parts": [prompt]})
-                chat["history"].append({"role": "model", "parts": [response.text]})
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro: {e}")
@@ -159,7 +193,7 @@ if menu == "💬 GORA Chat":
 # --- 8. Módulo Lab ---
 elif menu == "💻 GORA Lab":
     st.markdown("## 💻 GORA Python Lab")
-    code = st.text_area("Script Python", height=300, placeholder="Escreva o código aqui...")
+    code = st.text_area("Script Python", height=300)
     if st.button("⚡ Executar"):
         try:
             exec(code, st.session_state.lab_globals)
