@@ -5,13 +5,9 @@ import numpy as np
 import sys
 import os
 import requests
-import matplotlib.pyplot as plt
-import plotly.express as px
-from io import StringIO
 import uuid
 import json
 import time
-from docx import Document
 from PIL import Image
 
 # --- 1. Configuração da Página ---
@@ -36,7 +32,7 @@ def salvar_dados(dados):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
-# --- 3. Interface Visual Corrigida (CSS Customizado) ---
+# --- 3. Interface Visual Premium (Modo Escuro Focado) ---
 st.markdown("""
     <style>
     /* Fundo Geral da Aplicação */
@@ -52,7 +48,7 @@ st.markdown("""
         border-right: 1px solid #1f2937 !important; 
     }
     
-    /* Forçar contraste máximo de textos, títulos e etiquetas na Sidebar */
+    /* Forçar contraste máximo de textos e etiquetas na Sidebar */
     [data-testid="stSidebar"] p, 
     [data-testid="stSidebar"] span, 
     [data-testid="stSidebar"] label, 
@@ -94,7 +90,7 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important; 
     }
     
-    /* Botão Crítico de Reset na Sidebar (Vermelho para Destaque) */
+    /* Botão de Reset na Sidebar (Vermelho para Aviso) */
     div[data-testid="stSidebar"] .stButton>button {
         background: #ef4444 !important;
     }
@@ -107,6 +103,14 @@ st.markdown("""
         background-color: #1f2937 !important;
         color: #f1f5f9 !important;
         border: 1px solid #374151 !important;
+    }
+    
+    /* Destaque visual das caixas de upload */
+    .stFileUploader {
+        background-color: #111827 !important;
+        border: 1px dashed #374151 !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -132,7 +136,39 @@ if "taxa_cambio" not in st.session_state:
 if st.session_state.chat_atual not in st.session_state.all_chats:
     st.session_state.all_chats[st.session_state.chat_atual] = {"model": "gemini-2.5-pro", "history": []}
 
-# --- 5. Funções Auxiliares (Preços e Uploads de Grande Porte) ---
+# --- 5. Instruções de Sistema (Legislação Estrita) ---
+INSTRUCOES_SISTEMA = """
+Atuas como um assistente jurídico e analista técnico altamente qualificado, especializado em processos de fiscalização do território, planeamento regional e direito do ambiente em Portugal. O teu objetivo é analisar dados de processos confidenciais, emitir pareceres e cruzar informações com base nos documentos submetidos pelo utilizador e no enquadramento legislativo obrigatório detalhado abaixo.
+
+Sempre que analisares uma infração, uso, ocupação ou ação no território, deves obrigatoriamente enquadrar e consultar a seguinte legislação aplicável, conforme o caso:
+
+1. RESERVA ECOLÓGICA NACIONAL (REN):
+- Decreto-Lei n.º 166/2008, de 22 de agosto (Estabelece o regime jurídico da Reserva Ecológica Nacional, na sua redação atual).
+- Portaria n.º 419/2012, de 20 de dezembro (Condições e requisitos para usos e ações nos n.ºs 2 e 3 do art. 20.º do RJREN).
+
+2. RESERVA AGRÍCOLA NACIONAL (RAN):
+- Decreto-Lei n.º 73/2009, de 31 de março (Regime jurídico da Reserva Agrícola Nacional, na sua redação atual).
+- Portaria n.º 162/2011, de 18 de abril (Utilizações não agrícolas em áreas integradas na RAN).
+
+3. REDE NATURA 2000:
+- Decreto-Lei n.º 140/99, de 24 de abril (Na sua redação atual).
+- Decreto-Lei n.º 169/2001, de 25 de maio (Na sua redação atual).
+
+4. ORDENAMENTO DO TERRITÓRIO E URBANISMO:
+- Decreto-Lei n.º 80/2015, de 14 de maio - RJIGT (Regime Jurídico dos Instrumentos de Gestão Territorial, na sua redação atual).
+- Decreto-Lei n.º 555/99, de 16 de dezembro - RJUE (Regime Jurídico da Urbanização e Edificação, na sua redação atual).
+
+5. REGIME CONTRAORDENACIONAL AMBIENTAL:
+- Lei n.º 50/2006, de 29 de agosto (Lei Quadro das Contraordenações Ambientais, na sua redação atual).
+
+REGRAS DE FORMATAÇÃO E RESPOSTA:
+- Nomenclatura dos Diplomas: Deves referir-te sempre ao 1.º diploma legal indicado na lista anterior, seguido obrigatoriamente da expressão "na sua redação atual" (Exemplo: "... nos termos do Decreto-Lei n.º 166/2008, de 22 de agosto, na sua redação atual..."). Não deves listar as leis alteradoras intermédias no texto final, usa apenas a fórmula de redação atual para manter o texto limpo e conciso.
+- Fundamentação e Citação: Todas as tuas afirmações, conclusões ou propostas de decisão devem ser rigorosamente sustentadas por citações fundamentadas quer nos documentos carregados pelo utilizador (processos), quer nos artigos específicos da legislação abordada.
+- Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
+- Universalidade: Embora estejas otimizado para fiscalização territorial, continuas a ser um assistente universal abrangente, capaz de ajudar em lógica, programação ou redação geral caso solicitado.
+"""
+
+# --- 6. Funções de Custo e Upload (Chunking de Grande Porte) ---
 def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-pro"):
     if "flash" in modelo:
         p_in = (prompt_tokens / 1_000_000) * 0.075
@@ -143,10 +179,6 @@ def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemin
     return (p_in + p_out) * taxa_eur
 
 def enviar_para_google(uploaded_file):
-    """
-    Solução para erro 401: Força o Mime Type do ficheiro e faz upload estruturado
-    por fragmentos (chunks) suportando documentos grandes de até 2GB sem quebras.
-    """
     ext = os.path.splitext(uploaded_file.name)[1]
     temp_path = f"temp_{uuid.uuid4()}{ext}"
     
@@ -154,12 +186,7 @@ def enviar_para_google(uploaded_file):
         f.write(uploaded_file.getbuffer())
         
     try:
-        mime_type = None
-        if uploaded_file.type == "application/pdf":
-            mime_type = "application/pdf"
-        elif uploaded_file.type in ["image/png", "image/jpeg", "image/webp"]:
-            mime_type = uploaded_file.type
-            
+        mime_type = "application/pdf" if uploaded_file.type == "application/pdf" else None
         g_file = genai.upload_file(path=temp_path, display_name=uploaded_file.name, mime_type=mime_type)
         
         while g_file.state.name == "PROCESSING":
@@ -174,21 +201,22 @@ def enviar_para_google(uploaded_file):
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-# --- 6. Interface Sidebar ---
+# --- 7. Interface Sidebar ---
 with st.sidebar:
     st.image("https://img.icons8.com/fluent/96/000000/artificial-intelligence.png", width=60)
     st.markdown("# GORA Intelligence")
+    st.caption("Focado em Análise Confidencial e Fiscalização")
     st.markdown("---")
     
     api_key_env = os.environ.get("GEMINI_API_KEY", "")
-    api_input = st.text_input("Chave API Gemini", value=api_key_env, type="password")
+    api_input = st.text_input("Chave API Gemini (Paga/Studio)", value=api_key_env, type="password")
     if api_input:
         genai.configure(api_key=api_input)
     else:
         st.warning("Insira a sua chave API para começar.")
 
-    st.markdown("### 📊 Métrica de Consumo")
-    st.metric("Gasto Estimado (Sessão)", f"{st.session_state.total_eur:.4f} €")
+    st.markdown("### 📊 Controlo de Consumo")
+    st.metric("Gasto Estimado (Acumulado)", f"{st.session_state.total_eur:.4f} €")
     st.metric("Tokens Consumidos", f"{st.session_state.total_tokens_session:,}")
     
     if st.button("🗑️ Limpar Histórico Total"):
@@ -202,145 +230,135 @@ with st.sidebar:
         salvar_dados(db)
         st.rerun()
 
-    st.markdown("---")
-    menu = st.radio("Navegação", ["💬 Chat Principal", "💻 GORA Lab", "📊 Business Analytics"])
+# --- 8. Módulo Central do Chat ---
+st.markdown(f"## 💬 Painel Central de Análise: {st.session_state.chat_atual}")
 
-# --- 7. Módulo Chat Principal ---
-if menu == "💬 Chat Principal":
-    st.markdown(f"## 💬 Sala: {st.session_state.chat_atual}")
-    
-    col_c1, col_c2 = st.columns([3, 1])
-    with col_c1:
-        novo_chat = st.text_input("Criar nova sala de conversa...")
-        if st.button("➕ Criar Sala") and novo_chat:
-            if novo_chat not in st.session_state.all_chats:
-                st.session_state.all_chats[novo_chat] = {"model": "gemini-2.5-pro", "history": []}
-                st.session_state.chat_atual = novo_chat
-                db["all_chats"] = st.session_state.all_chats
-                salvar_dados(db)
-                st.rerun()
-    with col_c2:
-        salas = list(st.session_state.all_chats.keys())
-        escolha = st.selectbox("Mudar de Sala", salas, index=salas.index(st.session_state.chat_atual))
-        if escolha != st.session_state.chat_atual:
-            st.session_state.chat_atual = escolha
+# Seleção de Salas e Motor de Inteligência
+col_c1, col_c2, col_c3 = st.columns([2, 1, 1])
+with col_c1:
+    novo_chat = st.text_input("Nova sala de análise...")
+    if st.button("➕ Criar Sala") and novo_chat:
+        if novo_chat not in st.session_state.all_chats:
+            st.session_state.all_chats[novo_chat] = {"model": "gemini-2.5-pro", "history": []}
+            st.session_state.chat_atual = novo_chat
+            db["all_chats"] = st.session_state.all_chats
+            salvar_dados(db)
             st.rerun()
-
+with col_c2:
+    salas = list(st.session_state.all_chats.keys())
+    escolha = st.selectbox("Mudar de Sala", salas, index=salas.index(st.session_state.chat_atual))
+    if escolha != st.session_state.chat_atual:
+        st.session_state.chat_atual = escolha
+        st.rerun()
+with col_c3:
     chat_context = st.session_state.all_chats[st.session_state.chat_atual]
-    
     chat_context["model"] = st.selectbox(
-        "Motor de Inteligência", 
+        "Motor Gemini", 
         ["gemini-2.5-pro", "gemini-2.5-flash"], 
         index=0 if chat_context.get("model", "gemini-2.5-pro") == "gemini-2.5-pro" else 1
     )
 
-    uploaded_files = st.file_uploader("Anexar Documentos ou Ficheiros de Grande Porte (PDF, Imagens, Vídeos)", accept_multiple_files=True)
+st.markdown("---")
+
+# Duas colunas para gestão de documentos carregados na sessão
+col_u1, col_u2 = st.columns(2)
+with col_u1:
+    st.markdown("### 🗂️ 1. Processos de Fiscalização")
+    uploaded_files = st.file_uploader(
+        "Submete os dossiers/ficheiros grandes a analisar (PDFs)", 
+        accept_multiple_files=True, 
+        key="processos"
+    )
+with col_u2:
+    st.markdown("### 📄 2. Documento Tipo (Modelo Padrão)")
+    uploaded_template = st.file_uploader(
+        "Submete a minuta ou relatório de referência (Apenas 1 PDF)", 
+        accept_multiple_files=False, 
+        key="template"
+    )
+
+st.markdown("---")
+
+# Renderizar Histórico Existente
+for msg in chat_context["history"]:
+    role = "user" if msg["role"] == "user" else "assistant"
+    with st.chat_message(role):
+        for part in msg["parts"]:
+            if isinstance(part, str):
+                st.markdown(part)
+            elif hasattr(part, "text"):
+                st.markdown(part.text)
+
+# Janela de Comando Central (Chat Input)
+if prompt := st.chat_input("Insira o comando ou questão sobre os processos anexados..."):
+    st.chat_message("user").markdown(prompt)
     
-    # Histórico de mensagens
-    for msg in chat_context["history"]:
-        role = "user" if msg["role"] == "user" else "assistant"
-        with st.chat_message(role):
-            for part in msg["parts"]:
-                if isinstance(part, str):
-                    st.markdown(part)
-                elif hasattr(part, "text"):
-                    st.markdown(part.text)
+    conteudo = []
+    
+    # Processar os múltiplos ficheiros de processos (como o de 95MB)
+    if uploaded_files:
+        with st.spinner("A indexar processos e dossiers de fiscalização na Google Cloud..."):
+            for f in uploaded_files:
+                g_file_ref = enviar_para_google(f)
+                conteudo.append(g_file_ref)
+                
+    # Processar o documento modelo de referência, se existir
+    if uploaded_template:
+        with st.spinner("A estruturar documento tipo/modelo de referência..."):
+            g_template_ref = enviar_para_google(uploaded_template)
+            conteudo.append("NOTA DO SISTEMA: O documento a seguir é o DOCUMENTO TIPO/MODELO. Deves mimetizar a sua estrutura, estilo, secções e tom em qualquer relatório solicitado.")
+            conteudo.append(g_template_ref)
+            
+    conteudo.append(prompt)
 
-    if prompt := st.chat_input("Envie uma mensagem ou questione os documentos anexados..."):
-        st.chat_message("user").markdown(prompt)
-        
-        conteudo = []
-        
-        if uploaded_files:
-            with st.spinner("A processar anexos pesados na infraestrutura Google..."):
-                for f in uploaded_files:
-                    if f.type in ["image/png", "image/jpeg", "image/webp"]:
-                        conteudo.append(Image.open(f))
-                    else:
-                        g_file_ref = enviar_para_google(f)
-                        conteudo.append(g_file_ref)
-        
-        conteudo.append(prompt)
-
-        with st.chat_message("assistant"):
-            try:
-                model_instance = genai.GenerativeModel(chat_context["model"])
-                
-                sdk_history = []
-                for h_msg in chat_context["history"]:
-                    sdk_history.append({
-                        "role": h_msg["role"],
-                        "parts": [p.text if hasattr(p, "text") else p for p in h_msg["parts"]]
-                    })
-                
-                chat_sess = model_instance.start_chat(history=sdk_history)
-                response = chat_sess.send_message(conteudo)
-                
-                u = response.usage_metadata
-                custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
-                
-                st.session_state.total_eur += custo
-                st.session_state.total_tokens_session += u.total_token_count
-                
-                chat_context["history"].append({"role": "user", "parts": [prompt]})
-                chat_context["history"].append({"role": "model", "parts": [response.text]})
-                
-                db["total_eur"] = st.session_state.total_eur
-                db["total_tokens"] = st.session_state.total_tokens_session
-                db["all_chats"] = st.session_state.all_chats
-                salvar_dados(db)
-
-                st.markdown(response.text)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro na geração: {e}")
-
-# --- 8. Módulo Lab ---
-elif menu == "💻 GORA Lab":
-    st.markdown("## 💻 GORA Python Lab")
-    code = st.text_area("Script Python", height=300)
-    if st.button("⚡ Executar"):
-        old_stdout = sys.stdout
-        redirected_output = sys.stdout = StringIO()
+    with st.chat_message("assistant"):
         try:
-            exec(code)
-            sys.stdout = old_stdout
-            st.success("Executado com sucesso!")
-            st.code(redirected_output.getvalue())
-        except Exception as e:
-            sys.stdout = old_stdout
-            st.error(f"Erro na execução: {e}")
+            # Inicializar o modelo já injetando as Instruções de Legislação do Sistema
+            model_instance = genai.GenerativeModel(
+                model_name=chat_context["model"],
+                system_instruction=INSTRUCOES_SISTEMA
+            )
+            
+            # Saneamento e Higienização Estrita do Histórico (Evita erro 400)
+            sdk_history = []
+            for h_msg in chat_context["history"]:
+                texto_limpo = ""
+                for p in h_msg["parts"]:
+                    if isinstance(p, str):
+                        texto_limpo += p
+                    elif isinstance(p, dict) and "text" in p:
+                        texto_limpo += p["text"]
+                    elif hasattr(p, "text"):
+                        texto_limpo += p.text
+                
+                if texto_limpo.strip():
+                    sdk_history.append({
+                        "role": "user" if h_msg["role"] == "user" else "model",
+                        "parts": [texto_limpo]
+                    })
+            
+            chat_sess = model_instance.start_chat(history=sdk_history)
+            response = chat_sess.send_message(conteudo)
+            
+            # Cálculo de Métricas da Sessão Paga
+            u = response.usage_metadata
+            custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
+            
+            st.session_state.total_eur += custo
+            st.session_state.total_tokens_session += u.total_token_count
+            
+            # Guardar apenas strings no JSON local para evitar quebras de serialização
+            chat_context["history"].append({"role": "user", "parts": [prompt]})
+            chat_context["history"].append({"role": "model", "parts": [response.text]})
+            
+            db["total_eur"] = st.session_state.total_eur
+            db["total_tokens"] = st.session_state.total_tokens_session
+            db["all_chats"] = st.session_state.all_chats
+            salvar_dados(db)
 
-# --- 9. Módulo Business Analytics ---
-elif menu == "📊 Business Analytics":
-    st.markdown("## 📊 Painel Business Analytics")
-    uploaded_csv = st.file_uploader("Carregue dados operacionais (CSV ou Excel)", type=["csv", "xlsx"])
-    
-    if uploaded_csv:
-        if uploaded_csv.name.endswith(".csv"):
-            df = pd.read_csv(uploaded_csv)
-        else:
-            df = pd.read_excel(uploaded_csv)
-            
-        st.dataframe(df.head())
-        
-        col1, col2 = st.columns(2)
-        columns_list = df.columns.tolist()
-        
-        with col1:
-            x_axis = st.selectbox("Eixo X (Temporal/Categorias)", columns_list)
-        with col2:
-            y_axis = st.selectbox("Eixo Y (Métricas Numéricas)", columns_list)
-            
-        chart_type = st.selectbox("Tipo de Gráfico", ["Linhas", "Barras", "Dispersão"])
-        
-        if chart_type == "Linhas":
-            fig = px.line(df, x=x_axis, y=y_axis, title=f"{y_axis} ao longo de {x_axis}")
-        elif chart_type == "Barras":
-            fig = px.bar(df, x=x_axis, y=y_axis, title=f"Distribuição de {y_axis}")
-        else:
-            fig = px.scatter(df, x=x_axis, y=y_axis, title=f"Correlação: {x_axis} vs {y_axis}")
-            
-        st.plotly_chart(fig, use_container_width=True)
+            st.markdown(response.text)
+            st.rerun()
+        except Exception as e:
+            st.error(f"Erro na geração da análise: {e}")
 
 
