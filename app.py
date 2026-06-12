@@ -32,85 +32,93 @@ def salvar_dados(dados):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
-# --- 3. Interface Visual Premium (Modo Escuro Focado) ---
+# --- 3. Interface Visual Clássica (Fundo Cinza e Detalhes a Verde) ---
 st.markdown("""
     <style>
-    /* Fundo Geral da Aplicação */
+    /* Fundo Geral da Aplicação (Cinzento Claro original) */
     .stApp { 
-        background-color: #0b0f19 !important; 
-        color: #f1f5f9 !important; 
+        background-color: #F0F2F6 !important; 
+        color: #1E1E1E !important; 
         font-family: 'Inter', sans-serif; 
     }
     
-    /* Configuração Estrita da Barra Lateral (Sidebar) */
+    /* Configuração e Contraste da Barra Lateral (Sidebar Branca) */
     [data-testid="stSidebar"] { 
-        background-color: #111827 !important; 
-        border-right: 1px solid #1f2937 !important; 
+        background-color: #FFFFFF !important; 
+        border-right: 2px solid #E0E0E0 !important; 
     }
     
-    /* Forçar contraste máximo de textos e etiquetas na Sidebar */
+    /* Forçar visibilidade dos textos escuros na barra lateral branca */
     [data-testid="stSidebar"] p, 
     [data-testid="stSidebar"] span, 
     [data-testid="stSidebar"] label, 
     [data-testid="stSidebar"] h1, 
     [data-testid="stSidebar"] h3,
     [data-testid="stSidebar"] div { 
-        color: #f1f5f9 !important; 
+        color: #1E1E1E !important; 
     }
     
-    /* Títulos Principais */
+    /* Títulos Principais (Verde Corporativo original) */
     h1, h2, h3 { 
-        color: #f8fafc !important; 
+        color: #2E7D32 !important; 
         font-weight: 800 !important; 
         letter-spacing: -0.5px; 
     }
     
-    /* Estilização das Caixas de Mensagem do Chat */
+    /* Caixas de Mensagem do Chat (Fundo Branco com Sombra Verde Suave) */
     .stChatMessage {
-        background-color: #1f2937 !important; 
-        border: 1px solid #374151 !important;
+        background-color: #FFFFFF !important; 
+        border: 2px solid #E0E0E0 !important;
         border-radius: 12px !important; 
+        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
         margin-bottom: 15px; 
         padding: 20px !important;
+        color: #1E1E1E !important;
     }
     
-    /* Estilização dos Botões de Ação Dinâmicos */
+    /* Estilização dos Botões de Ação (Borda Verde e Fundo Branco) */
     .stButton>button { 
-        background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important; 
-        color: #ffffff !important; 
-        border: none !important; 
-        border-radius: 8px !important; 
-        padding: 0.5rem 1rem !important; 
-        font-weight: 600 !important; 
-        transition: all 0.3s !important; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+        border-radius: 10px !important; 
+        border: 2px solid #2E7D32 !important;
+        background-color: #FFFFFF !important; 
+        color: #2E7D32 !important;
+        font-weight: 800 !important; 
+        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2) !important;
+        transition: all 0.2s !important;
     }
     .stButton>button:hover { 
-        transform: translateY(-1px) !important; 
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important; 
+        background-color: #2E7D32 !important;
+        color: #FFFFFF !important;
+        transform: translate(-2px, -2px) !important;
+        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3) !important;
     }
     
-    /* Botão de Reset na Sidebar (Vermelho para Aviso) */
+    /* Botão de Reset na Sidebar (Mantido a Vermelho por Segurança Visual) */
     div[data-testid="stSidebar"] .stButton>button {
-        background: #ef4444 !important;
+        border: 2px solid #ef4444 !important;
+        color: #ef4444 !important;
+        box-shadow: 4px 4px 0px rgba(239, 68, 68, 0.2) !important;
     }
     div[data-testid="stSidebar"] .stButton>button:hover {
-        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+        background-color: #ef4444 !important;
+        color: #FFFFFF !important;
+        box-shadow: 6px 6px 0px rgba(239, 68, 68, 0.3) !important;
     }
     
-    /* Input Boxes e Selectores adaptados para o Modo Escuro */
+    /* Inputs de Texto e Caixas de Seleção Integradas */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: #1f2937 !important;
-        color: #f1f5f9 !important;
-        border: 1px solid #374151 !important;
+        background-color: #FFFFFF !important;
+        color: #1E1E1E !important;
+        border: 2px solid #E0E0E0 !important;
+        border-radius: 8px !important;
     }
     
-    /* Destaque visual das caixas de upload */
+    /* Caixas de Upload de Ficheiros */
     .stFileUploader {
-        background-color: #111827 !important;
-        border: 1px dashed #374151 !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
+        background-color: #FFFFFF !important;
+        border: 2px dashed #2E7D32 !important;
+        border-radius: 10px !important;
+        padding: 12px !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -203,8 +211,8 @@ def enviar_para_google(uploaded_file):
 
 # --- 7. Interface Sidebar ---
 with st.sidebar:
-    st.image("https://img.icons8.com/fluent/96/000000/artificial-intelligence.png", width=60)
-    st.markdown("# GORA Intelligence")
+    st.image("https://img.icons8.com/fluency/144/artificial-intelligence.png", width=60)
+    st.title("GORA Workspace")
     st.caption("Focado em Análise Confidencial e Fiscalização")
     st.markdown("---")
     
@@ -217,7 +225,7 @@ with st.sidebar:
 
     st.markdown("### 📊 Controlo de Consumo")
     st.metric("Gasto Estimado (Acumulado)", f"{st.session_state.total_eur:.4f} €")
-    st.metric("Tokens Consumidos", f"{st.session_state.total_tokens_session:,}")
+    st.caption(f"Tokens Totais: {st.session_state.total_tokens_session:,}")
     
     if st.button("🗑️ Limpar Histórico Total"):
         st.session_state.total_eur = 0.0
@@ -360,5 +368,3 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
             st.rerun()
         except Exception as e:
             st.error(f"Erro na geração da análise: {e}")
-
-
