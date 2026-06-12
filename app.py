@@ -301,25 +301,30 @@ for msg in chat_context["history"]:
 if prompt := st.chat_input("Insira o comando ou questão sobre os processos anexados..."):
     st.chat_message("user").markdown(prompt)
     
-    # RECONSTRUÇÃO COMPLETA DE CONTEXTO: Resolve o Erro 400 estrutural do start_chat
+    # Construção blindada do Payload de Conteúdo para evitar o Erro 400
     payload_conteudo = []
     
-    # 1. Injetar o histórico estruturado diretamente no payload de conteúdo
+    # 1. Injetar o histórico estruturado como texto limpo compilado
+    texto_historico = ""
     for h_msg in chat_context["history"]:
         prefixo_role = "UTILIZADOR ANTERIOR: " if h_msg["role"] == "user" else "ASSISTENTE ANTERIOR (A tua resposta): "
-        texto_acumulado = ""
+        texto_msg = ""
         for p in h_msg["parts"]:
-            if isinstance(p, str): texto_acumulado += p
-            elif isinstance(p, dict) and "text" in p: texto_acumulado += p["text"]
-            elif hasattr(p, "text"): texto_acumulado += p.text
-        if texto_acumulado.strip():
-            payload_conteudo.append(f"{prefixo_role}\n{texto_acumulado}\n---")
+            if isinstance(p, str): texto_msg += p
+            elif isinstance(p, dict) and "text" in p: texto_msg += p["text"]
+            elif hasattr(p, "text"): texto_msg += p.text
+        if texto_msg.strip():
+            texto_historico += f"{prefixo_role}\n{texto_msg}\n---\n"
             
-    # 2. Processar e anexar os novos ficheiros grandes de processos
+    if texto_historico:
+        payload_conteudo.append(f"HISTÓRICO DA CONVERSA:\n{texto_historico}")
+            
+    # 2. Processar e anexar os novos ficheiros grandes de processos (Passando a referência limpa)
     if uploaded_files:
         with st.spinner("A indexar processos e dossiers de fiscalização na Google Cloud..."):
             for f in uploaded_files:
                 g_file_ref = enviar_para_google(f)
+                # Injetamos o objeto retornado diretamente na lista, sem strings concatenadas na mesma part
                 payload_conteudo.append(g_file_ref)
                 
     # 3. Processar e anexar o documento modelo de referência, se existir
@@ -329,8 +334,8 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
             payload_conteudo.append("NOTA CRÍTICA DE FORMATO: O documento em anexo que se segue representa o teu DOCUMENTO TIPO/MODELO. Deves mimetizar de forma estrita e absoluta a sua estrutura, índices, tom, divisões de secções e estilo formal em qualquer relatório jurídico ou parecer solicitado nesta sessão.")
             payload_conteudo.append(g_template_ref)
             
-    # 4. Adicionar o comando atual do utilizador
-    payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR (Executa com base em todo o contexto e histórico acima fornecidos):\n{prompt}")
+    # 4. Adicionar o comando atual do utilizador isolado na última part
+    payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR:\n{prompt}")
 
     with st.chat_message("assistant"):
         try:
@@ -340,7 +345,7 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
                 system_instruction=INSTRUCOES_SISTEMA
             )
             
-            # Chamar a geração de conteúdo passando o payload unificado e blindado
+            # Chamar a geração de conteúdo com o array estruturado de parts puras
             response = model_instance.generate_content(payload_conteudo)
             
             # Cálculo e atualização de custos reais da chamada
