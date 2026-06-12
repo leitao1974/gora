@@ -36,17 +36,80 @@ def salvar_dados(dados):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
-# --- 3. CSS Vanguardista ---
+# --- 3. Interface Visual Corrigida (CSS Customizado) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #0b0f19; color: #e2e8f0; }
-    [data-testid="stSidebar"] { background-color: #111827; border-right: 1px solid #1f2937; }
-    .stButton>button { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; border: none; border-radius: 8px; padding: 0.5rem 1rem; font-weight: 600; transition: all 0.3s; }
-    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
-    .chat-box { background-color: #1f2937; border-radius: 12px; padding: 1.5rem; border: 1px solid #374151; margin-bottom: 1rem; }
-    h1, h2, h3 { color: #f8fafc; font-family: 'Inter', sans-serif; }
+    /* Fundo Geral da Aplicação */
+    .stApp { 
+        background-color: #0b0f19 !important; 
+        color: #f1f5f9 !important; 
+        font-family: 'Inter', sans-serif; 
+    }
+    
+    /* Configuração Estrita da Barra Lateral (Sidebar) */
+    [data-testid="stSidebar"] { 
+        background-color: #111827 !important; 
+        border-right: 1px solid #1f2937 !important; 
+    }
+    
+    /* Forçar contraste máximo de textos, títulos e etiquetas na Sidebar */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] span, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] div { 
+        color: #f1f5f9 !important; 
+    }
+    
+    /* Títulos Principais */
+    h1, h2, h3 { 
+        color: #f8fafc !important; 
+        font-weight: 800 !important; 
+        letter-spacing: -0.5px; 
+    }
+    
+    /* Estilização das Caixas de Mensagem do Chat */
+    .stChatMessage {
+        background-color: #1f2937 !important; 
+        border: 1px solid #374151 !important;
+        border-radius: 12px !important; 
+        margin-bottom: 15px; 
+        padding: 20px !important;
+    }
+    
+    /* Estilização dos Botões de Ação Dinâmicos */
+    .stButton>button { 
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6) !important; 
+        color: #ffffff !important; 
+        border: none !important; 
+        border-radius: 8px !important; 
+        padding: 0.5rem 1rem !important; 
+        font-weight: 600 !important; 
+        transition: all 0.3s !important; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+    }
+    .stButton>button:hover { 
+        transform: translateY(-1px) !important; 
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important; 
+    }
+    
+    /* Botão Crítico de Reset na Sidebar (Vermelho para Destaque) */
+    div[data-testid="stSidebar"] .stButton>button {
+        background: #ef4444 !important;
+    }
+    div[data-testid="stSidebar"] .stButton>button:hover {
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+    }
+    
+    /* Input Boxes e Selectores adaptados para o Modo Escuro */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+        background-color: #1f2937 !important;
+        color: #f1f5f9 !important;
+        border: 1px solid #374151 !important;
+    }
     </style>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 db = carregar_dados()
 
@@ -69,9 +132,8 @@ if "taxa_cambio" not in st.session_state:
 if st.session_state.chat_atual not in st.session_state.all_chats:
     st.session_state.all_chats[st.session_state.chat_atual] = {"model": "gemini-2.5-pro", "history": []}
 
-# --- 5. Funções Auxiliares (Preços e Uploads) ---
+# --- 5. Funções Auxiliares (Preços e Uploads de Grande Porte) ---
 def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-pro"):
-    # Configuração de preços padrão (ajustável para planos pagos se necessário)
     if "flash" in modelo:
         p_in = (prompt_tokens / 1_000_000) * 0.075
         p_out = (candidates_tokens / 1_000_000) * 0.30
@@ -82,11 +144,9 @@ def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemin
 
 def enviar_para_google(uploaded_file):
     """
-    Função atualizada para lidar com ficheiros grandes (Ex: PDFs de 95MB)
-    evitando o erro HTTP 401 Unauthorized através da definição explícita do Mime Type
-    e isolamento de contexto de rede.
+    Solução para erro 401: Força o Mime Type do ficheiro e faz upload estruturado
+    por fragmentos (chunks) suportando documentos grandes de até 2GB sem quebras.
     """
-    # Preservar a extensão original do ficheiro para processamento correto na Google
     ext = os.path.splitext(uploaded_file.name)[1]
     temp_path = f"temp_{uuid.uuid4()}{ext}"
     
@@ -94,27 +154,23 @@ def enviar_para_google(uploaded_file):
         f.write(uploaded_file.getbuffer())
         
     try:
-        # Forçar a identificação do tipo MIME para ficheiros grandes (especialmente PDFs)
         mime_type = None
         if uploaded_file.type == "application/pdf":
             mime_type = "application/pdf"
         elif uploaded_file.type in ["image/png", "image/jpeg", "image/webp"]:
             mime_type = uploaded_file.type
             
-        # Realiza o upload utilizando o chunking correto do SDK para ficheiros pesados
         g_file = genai.upload_file(path=temp_path, display_name=uploaded_file.name, mime_type=mime_type)
         
-        # Aguardar o processamento interno da Google (essencial para vídeos e PDFs gigantes)
         while g_file.state.name == "PROCESSING":
             time.sleep(2)
             g_file = genai.get_file(g_file.name)
             
         return g_file
     except Exception as e:
-        st.error(f"Erro ao processar upload para a Google API: {e}")
+        st.error(f"Erro no upload para a Google API: {e}")
         raise e
     finally:
-        # Segurança: Garante que o ficheiro temporário de 95MB é apagado do servidor Streamlit
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
@@ -124,7 +180,6 @@ with st.sidebar:
     st.markdown("# GORA Intelligence")
     st.markdown("---")
     
-    # Gerador de Chave API Dinâmica
     api_key_env = os.environ.get("GEMINI_API_KEY", "")
     api_input = st.text_input("Chave API Gemini", value=api_key_env, type="password")
     if api_input:
@@ -154,7 +209,6 @@ with st.sidebar:
 if menu == "💬 Chat Principal":
     st.markdown(f"## 💬 Sala: {st.session_state.chat_atual}")
     
-    # Gestão de Múltiplos Chats
     col_c1, col_c2 = st.columns([3, 1])
     with col_c1:
         novo_chat = st.text_input("Criar nova sala de conversa...")
@@ -174,52 +228,44 @@ if menu == "💬 Chat Principal":
 
     chat_context = st.session_state.all_chats[st.session_state.chat_atual]
     
-    # Seleção de Modelo para este chat específico
     chat_context["model"] = st.selectbox(
         "Motor de Inteligência", 
         ["gemini-2.5-pro", "gemini-2.5-flash"], 
         index=0 if chat_context.get("model", "gemini-2.5-pro") == "gemini-2.5-pro" else 1
     )
 
-    # Upload Multimodal Avançado
     uploaded_files = st.file_uploader("Anexar Documentos ou Ficheiros de Grande Porte (PDF, Imagens, Vídeos)", accept_multiple_files=True)
     
-    # Renderização do Histórico Existente
+    # Histórico de mensagens
     for msg in chat_context["history"]:
         role = "user" if msg["role"] == "user" else "assistant"
         with st.chat_message(role):
-            # Filtrar e mostrar apenas o texto guardado para evitar lixo visual no histórico
             for part in msg["parts"]:
                 if isinstance(part, str):
                     st.markdown(part)
                 elif hasattr(part, "text"):
                     st.markdown(part.text)
 
-    # Input do Utilizador
     if prompt := st.chat_input("Envie uma mensagem ou questione os documentos anexados..."):
         st.chat_message("user").markdown(prompt)
         
         conteudo = []
         
-        # Processamento de Anexos
         if uploaded_files:
-            with st.spinner("A carregar e a processar os anexos na infraestrutura Google..."):
+            with st.spinner("A processar anexos pesados na infraestrutura Google..."):
                 for f in uploaded_files:
                     if f.type in ["image/png", "image/jpeg", "image/webp"]:
                         conteudo.append(Image.open(f))
                     else:
-                        # PDFs e outros ficheiros pesados (como os teus 95MB) entram aqui
                         g_file_ref = enviar_para_google(f)
                         conteudo.append(g_file_ref)
         
         conteudo.append(prompt)
 
-        # Chamada à API
         with st.chat_message("assistant"):
             try:
                 model_instance = genai.GenerativeModel(chat_context["model"])
                 
-                # Reconstruir histórico no formato correto do SDK do Gemini
                 sdk_history = []
                 for h_msg in chat_context["history"]:
                     sdk_history.append({
@@ -230,18 +276,15 @@ if menu == "💬 Chat Principal":
                 chat_sess = model_instance.start_chat(history=sdk_history)
                 response = chat_sess.send_message(conteudo)
                 
-                # Atualizar Estado e Base de Dados de Custos
                 u = response.usage_metadata
                 custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
                 
                 st.session_state.total_eur += custo
                 st.session_state.total_tokens_session += u.total_token_count
                 
-                # Adicionar à persistência local em formato serializável (String)
                 chat_context["history"].append({"role": "user", "parts": [prompt]})
                 chat_context["history"].append({"role": "model", "parts": [response.text]})
                 
-                # Sincronizar com a Base de Dados JSON
                 db["total_eur"] = st.session_state.total_eur
                 db["total_tokens"] = st.session_state.total_tokens_session
                 db["all_chats"] = st.session_state.all_chats
@@ -250,7 +293,7 @@ if menu == "💬 Chat Principal":
                 st.markdown(response.text)
                 st.rerun()
             except Exception as e:
-                st.error(f"Erro na geração da resposta: {e}")
+                st.error(f"Erro na geração: {e}")
 
 # --- 8. Módulo Lab ---
 elif menu == "💻 GORA Lab":
@@ -299,6 +342,5 @@ elif menu == "📊 Business Analytics":
             fig = px.scatter(df, x=x_axis, y=y_axis, title=f"Correlação: {x_axis} vs {y_axis}")
             
         st.plotly_chart(fig, use_container_width=True)
-
 
 
