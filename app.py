@@ -172,7 +172,7 @@ Sempre que analisares uma infração, uso, ocupação ou ação no território, 
 REGRAS DE FORMATAÇÃO E RESPOSTA:
 - Nomenclatura dos Diplomas: Deves referir-te sempre ao 1.º diploma legal indicado na lista anterior, seguido obrigatoriamente da expressão "na sua redação atual" (Exemplo: "... nos termos do Decreto-Lei n.º 166/2008, de 22 de agosto, na sua redação atual..."). Não deves listar as leis alteradoras intermédias no texto final, usa apenas a fórmula de redação atual para manter o texto limpo e conciso.
 - Fundamentação e Citação: Todas as tuas afirmações, conclusões ou propostas de decisão devem ser rigorosamente sustentadas por citações fundamentadas quer nos documentos carregados pelo utilizador (processos), quer nos artigos específicos da legislação abordada.
-- Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
+- Tom: Mantém um tom estritamente formal, técnico, objective e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
 - Universalidade: Embora estejas otimizado para fiscalização territorial, continuas a ser um assistente universal abrangente, capaz de ajudar em lógica, programação ou redação geral caso solicitado.
 """
 
@@ -301,64 +301,60 @@ for msg in chat_context["history"]:
 if prompt := st.chat_input("Insira o comando ou questão sobre os processos anexados..."):
     st.chat_message("user").markdown(prompt)
     
-    conteudo = []
+    # RECONSTRUÇÃO COMPLETA DE CONTEXTO: Resolve o Erro 400 estrutural do start_chat
+    payload_conteudo = []
     
-    # Processar os múltiplos ficheiros de processos (como o de 95MB)
+    # 1. Injetar o histórico estruturado diretamente no payload de conteúdo
+    for h_msg in chat_context["history"]:
+        prefixo_role = "UTILIZADOR ANTERIOR: " if h_msg["role"] == "user" else "ASSISTENTE ANTERIOR (A tua resposta): "
+        texto_acumulado = ""
+        for p in h_msg["parts"]:
+            if isinstance(p, str): texto_acumulado += p
+            elif isinstance(p, dict) and "text" in p: texto_acumulado += p["text"]
+            elif hasattr(p, "text"): texto_acumulado += p.text
+        if texto_acumulado.strip():
+            payload_conteudo.append(f"{prefixo_role}\n{texto_acumulado}\n---")
+            
+    # 2. Processar e anexar os novos ficheiros grandes de processos
     if uploaded_files:
         with st.spinner("A indexar processos e dossiers de fiscalização na Google Cloud..."):
             for f in uploaded_files:
                 g_file_ref = enviar_para_google(f)
-                conteudo.append(g_file_ref)
+                payload_conteudo.append(g_file_ref)
                 
-    # Processar o documento modelo de referência, se existir
+    # 3. Processar e anexar o documento modelo de referência, se existir
     if uploaded_template:
         with st.spinner("A estruturar documento tipo/modelo de referência..."):
             g_template_ref = enviar_para_google(uploaded_template)
-            conteudo.append("NOTA DO SISTEMA: O documento a seguir é o DOCUMENTO TIPO/MODELO. Deves mimetizar a sua estrutura, estilo, secções e tom em qualquer relatório solicitado.")
-            conteudo.append(g_template_ref)
+            payload_conteudo.append("NOTA CRÍTICA DE FORMATO: O documento em anexo que se segue representa o teu DOCUMENTO TIPO/MODELO. Deves mimetizar de forma estrita e absoluta a sua estrutura, índices, tom, divisões de secções e estilo formal em qualquer relatório jurídico ou parecer solicitado nesta sessão.")
+            payload_conteudo.append(g_template_ref)
             
-    conteudo.append(prompt)
+    # 4. Adicionar o comando atual do utilizador
+    payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR (Executa com base em todo o contexto e histórico acima fornecidos):\n{prompt}")
 
     with st.chat_message("assistant"):
         try:
-            # Inicializar o modelo já injetando as Instruções de Legislação do Sistema
+            # Inicializar o modelo com as Instruções de Legislação do Sistema
             model_instance = genai.GenerativeModel(
                 model_name=chat_context["model"],
                 system_instruction=INSTRUCOES_SISTEMA
             )
             
-            # Saneamento e Higienização Estrita do Histórico (Evita erro 400)
-            sdk_history = []
-            for h_msg in chat_context["history"]:
-                texto_limpo = ""
-                for p in h_msg["parts"]:
-                    if isinstance(p, str):
-                        texto_limpo += p
-                    elif isinstance(p, dict) and "text" in p:
-                        texto_limpo += p["text"]
-                    elif hasattr(p, "text"):
-                        texto_limpo += p.text
-                
-                if texto_limpo.strip():
-                    sdk_history.append({
-                        "role": "user" if h_msg["role"] == "user" else "model",
-                        "parts": [texto_limpo]
-                    })
+            # Chamar a geração de conteúdo passando o payload unificado e blindado
+            response = model_instance.generate_content(payload_conteudo)
             
-            chat_sess = model_instance.start_chat(history=sdk_history)
-            response = chat_sess.send_message(conteudo)
-            
-            # Cálculo de Métricas da Sessão Paga
+            # Cálculo e atualização de custos reais da chamada
             u = response.usage_metadata
             custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
             
             st.session_state.total_eur += custo
             st.session_state.total_tokens_session += u.total_token_count
             
-            # Guardar apenas strings no JSON local para evitar quebras de serialização
+            # Atualizar histórico em formato de string seguro para persistência no JSON
             chat_context["history"].append({"role": "user", "parts": [prompt]})
             chat_context["history"].append({"role": "model", "parts": [response.text]})
             
+            # Sincronizar dados locais
             db["total_eur"] = st.session_state.total_eur
             db["total_tokens"] = st.session_state.total_tokens_session
             db["all_chats"] = st.session_state.all_chats
