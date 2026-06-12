@@ -141,8 +141,9 @@ if "taxa_cambio" not in st.session_state:
     except:
         st.session_state.taxa_cambio = 0.92
 
+# CONFIGURAÇÃO: Garantir que o modelo por defeito em novas salas é o gemini-2.5-flash
 if st.session_state.chat_atual not in st.session_state.all_chats:
-    st.session_state.all_chats[st.session_state.chat_atual] = {"model": "gemini-2.5-pro", "history": []}
+    st.session_state.all_chats[st.session_state.chat_atual] = {"model": "gemini-2.5-flash", "history": []}
 
 # --- 5. Instruções de Sistema (Legislação Estrita) ---
 INSTRUCOES_SISTEMA = """
@@ -172,18 +173,19 @@ Sempre que analisares uma infração, uso, ocupação ou ação no território, 
 REGRAS DE FORMATAÇÃO E RESPOSTA:
 - Nomenclatura dos Diplomas: Deves referir-te sempre ao 1.º diploma legal indicado na lista anterior, seguido obrigatoriamente da expressão "na sua redação atual" (Exemplo: "... nos termos do Decreto-Lei n.º 166/2008, de 22 de agosto, na sua redação atual..."). Não deves listar as leis alteradoras intermédias no texto final, usa apenas a fórmula de redação atual para manter o texto limpo e conciso.
 - Fundamentação e Citação: Todas as tuas afirmações, conclusões ou propostas de decisão devem ser rigorosamente sustentadas por citações fundamentadas quer nos documentos carregados pelo utilizador (processos), quer nos artigos específicos da legislação abordada.
-- Tom: Mantém um tom estritamente formal, técnico, objective e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
+- Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
 - Universalidade: Embora estejas otimizado para fiscalização territorial, continuas a ser um assistente universal abrangente, capaz de ajudar em lógica, programação ou redação geral caso solicitado.
 """
 
 # --- 6. Funções de Custo e Upload (Chunking de Grande Porte) ---
-def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-pro"):
-    if "flash" in modelo:
-        p_in = (prompt_tokens / 1_000_000) * 0.075
-        p_out = (candidates_tokens / 1_000_000) * 0.30
-    else:
+def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-flash"):
+    if "pro" in modelo:
         p_in = (prompt_tokens / 1_000_000) * 1.25
         p_out = (candidates_tokens / 1_000_000) * 5.00
+    else:
+        # Preços de referência para o gemini-2.5-flash
+        p_in = (prompt_tokens / 1_000_000) * 0.075
+        p_out = (candidates_tokens / 1_000_000) * 0.30
     return (p_in + p_out) * taxa_eur
 
 def enviar_para_google(uploaded_file):
@@ -230,7 +232,7 @@ with st.sidebar:
     if st.button("🗑️ Limpar Histórico Total"):
         st.session_state.total_eur = 0.0
         st.session_state.total_tokens_session = 0
-        st.session_state.all_chats = {"Conversa Padrão": {"model": "gemini-2.5-pro", "history": []}}
+        st.session_state.all_chats = {"Conversa Padrão": {"model": "gemini-2.5-flash", "history": []}}
         st.session_state.chat_atual = "Conversa Padrão"
         db["total_eur"] = 0.0
         db["total_tokens"] = 0
@@ -247,7 +249,7 @@ with col_c1:
     novo_chat = st.text_input("Nova sala de análise...")
     if st.button("➕ Criar Sala") and novo_chat:
         if novo_chat not in st.session_state.all_chats:
-            st.session_state.all_chats[novo_chat] = {"model": "gemini-2.5-pro", "history": []}
+            st.session_state.all_chats[novo_chat] = {"model": "gemini-2.5-flash", "history": []}
             st.session_state.chat_atual = novo_chat
             db["all_chats"] = st.session_state.all_chats
             salvar_dados(db)
@@ -260,10 +262,11 @@ with col_c2:
         st.rerun()
 with col_c3:
     chat_context = st.session_state.all_chats[st.session_state.chat_atual]
+    # CONFIGURAÇÃO: Ordenação alterada para que o Flash seja o índice 0 (Padrão)
     chat_context["model"] = st.selectbox(
         "Motor Gemini", 
-        ["gemini-2.5-pro", "gemini-2.5-flash"], 
-        index=0 if chat_context.get("model", "gemini-2.5-pro") == "gemini-2.5-pro" else 1
+        ["gemini-2.5-flash", "gemini-2.5-pro"], 
+        index=0 if chat_context.get("model", "gemini-2.5-flash") == "gemini-2.5-flash" else 1
     )
 
 st.markdown("---")
@@ -301,7 +304,6 @@ for msg in chat_context["history"]:
 if prompt := st.chat_input("Insira o comando ou questão sobre os processos anexados..."):
     st.chat_message("user").markdown(prompt)
     
-    # Construção blindada do Payload de Conteúdo para evitar o Erro 400
     payload_conteudo = []
     
     # 1. Injetar o histórico estruturado como texto limpo compilado
@@ -319,12 +321,11 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
     if texto_historico:
         payload_conteudo.append(f"HISTÓRICO DA CONVERSA:\n{texto_historico}")
             
-    # 2. Processar e anexar os novos ficheiros grandes de processos (Passando a referência limpa)
+    # 2. Processar e anexar os novos ficheiros grandes de processos
     if uploaded_files:
         with st.spinner("A indexar processos e dossiers de fiscalização na Google Cloud..."):
             for f in uploaded_files:
                 g_file_ref = enviar_para_google(f)
-                # Injetamos o objeto retornado diretamente na lista, sem strings concatenadas na mesma part
                 payload_conteudo.append(g_file_ref)
                 
     # 3. Processar e anexar o documento modelo de referência, se existir
@@ -334,7 +335,7 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
             payload_conteudo.append("NOTA CRÍTICA DE FORMATO: O documento em anexo que se segue representa o teu DOCUMENTO TIPO/MODELO. Deves mimetizar de forma estrita e absoluta a sua estrutura, índices, tom, divisões de secções e estilo formal em qualquer relatório jurídico ou parecer solicitado nesta sessão.")
             payload_conteudo.append(g_template_ref)
             
-    # 4. Adicionar o comando atual do utilizador isolado na última part
+    # 4. Adicionar o comando atual do utilizador
     payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR:\n{prompt}")
 
     with st.chat_message("assistant"):
@@ -345,7 +346,7 @@ if prompt := st.chat_input("Insira o comando ou questão sobre os processos anex
                 system_instruction=INSTRUCOES_SISTEMA
             )
             
-            # Chamar a geração de conteúdo com o array estruturado de parts puras
+            # Chamar a geração de conteúdo com o payload de parts isoladas
             response = model_instance.generate_content(payload_conteudo)
             
             # Cálculo e atualização de custos reais da chamada
