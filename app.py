@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import pandas as pd
 import numpy as np
 import sys
@@ -32,23 +33,18 @@ def salvar_dados(dados):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(dados, f, ensure_ascii=False, indent=4)
 
-# --- 3. Interface Visual Clássica (Fundo Cinza e Detalhes a Verde) ---
+# --- 3. Interface Visual Clássica ---
 st.markdown("""
     <style>
-    /* Fundo Geral da Aplicação (Cinzento Claro original) */
     .stApp { 
         background-color: #F0F2F6 !important; 
         color: #1E1E1E !important; 
         font-family: 'Inter', sans-serif; 
     }
-    
-    /* Configuração e Contraste da Barra Lateral (Sidebar Branca) */
     [data-testid="stSidebar"] { 
         background-color: #FFFFFF !important; 
         border-right: 2px solid #E0E0E0 !important; 
     }
-    
-    /* Forçar visibilidade dos textos escuros na barra lateral branca */
     [data-testid="stSidebar"] p, 
     [data-testid="stSidebar"] span, 
     [data-testid="stSidebar"] label, 
@@ -57,15 +53,11 @@ st.markdown("""
     [data-testid="stSidebar"] div { 
         color: #1E1E1E !important; 
     }
-    
-    /* Títulos Principais (Verde Corporativo original) */
     h1, h2, h3 { 
         color: #2E7D32 !important; 
         font-weight: 800 !important; 
         letter-spacing: -0.5px; 
     }
-    
-    /* Caixas de Mensagem do Chat (Fundo Branco com Sombra Verde Suave) */
     .stChatMessage {
         background-color: #FFFFFF !important; 
         border: 2px solid #E0E0E0 !important;
@@ -75,8 +67,6 @@ st.markdown("""
         padding: 20px !important;
         color: #1E1E1E !important;
     }
-    
-    /* Estilização dos Botões de Ação (Borda Verde e Fundo Branco) */
     .stButton>button { 
         border-radius: 10px !important; 
         border: 2px solid #2E7D32 !important;
@@ -92,8 +82,6 @@ st.markdown("""
         transform: translate(-2px, -2px) !important;
         box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3) !important;
     }
-    
-    /* Botão de Reset na Sidebar (Mantido a Vermelho por Segurança Visual) */
     div[data-testid="stSidebar"] .stButton>button {
         border: 2px solid #ef4444 !important;
         color: #ef4444 !important;
@@ -104,16 +92,12 @@ st.markdown("""
         color: #FFFFFF !important;
         box-shadow: 6px 6px 0px rgba(239, 68, 68, 0.3) !important;
     }
-    
-    /* Inputs de Texto e Caixas de Seleção Integradas */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         background-color: #FFFFFF !important;
         color: #1E1E1E !important;
         border: 2px solid #E0E0E0 !important;
         border-radius: 8px !important;
     }
-    
-    /* Caixas de Upload de Ficheiros */
     .stFileUploader {
         background-color: #FFFFFF !important;
         border: 2px dashed #2E7D32 !important;
@@ -141,11 +125,10 @@ if "taxa_cambio" not in st.session_state:
     except:
         st.session_state.taxa_cambio = 0.92
 
-# CONFIGURAÇÃO: Garantir que o modelo por defeito em novas salas é o gemini-2.5-flash
 if st.session_state.chat_atual not in st.session_state.all_chats:
     st.session_state.all_chats[st.session_state.chat_atual] = {"model": "gemini-2.5-flash", "history": []}
 
-# --- 5. Instruções de Sistema (Legislação Estrita) ---
+# --- 5. Instruções de Sistema ---
 INSTRUCOES_SISTEMA = """
 Atuas como um assistente jurídico e analista técnico altamente qualificado, especializado em processos de fiscalização do território, planeamento regional e direito do ambiente em Portugal. O teu objetivo é analisar dados de processos confidenciais, emitir pareceres e cruzar informações com base nos documentos submetidos pelo utilizador e no enquadramento legislativo obrigatório detalhado abaixo.
 
@@ -171,24 +154,22 @@ Sempre que analisares uma infração, uso, ocupação ou ação no território, 
 - Lei n.º 50/2006, de 29 de agosto (Lei Quadro das Contraordenações Ambientais, na sua redação atual).
 
 REGRAS DE FORMATAÇÃO E RESPOSTA:
-- Nomenclatura dos Diplomas: Deves referir-te sempre ao 1.º diploma legal indicado na lista anterior, seguido obrigatoriamente da expressão "na sua redação atual" (Exemplo: "... nos termos do Decreto-Lei n.º 166/2008, de 22 de agosto, na sua redação atual..."). Não deves listar as leis alteradoras intermédias no texto final, usa apenas a fórmula de redação atual para manter o texto limpo e conciso.
-- Fundamentação e Citação: Todas as tuas afirmações, conclusões ou propostas de decisão devem ser rigorosamente sustentadas por citações fundamentadas quer nos documentos carregados pelo utilizador (processos), quer nos artigos específicos da legislação abordada.
-- Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado. Se o utilizador fornecer um "Documento Tipo", adota rigorosamente a estrutura, as divisões de secções e o estilo de escrita desse modelo.
-- Universalidade: Embora estejas otimizado para fiscalização territorial, continuas a ser um assistente universal abrangente, capaz de ajudar em lógica, programação ou redação geral caso solicitado.
+- Nomenclatura dos Diplomas: Deves referir-te sempre ao 1.º diploma legal indicado na lista anterior, seguido obrigatoriamente da expressão "na sua redação atual".
+- Fundamentação e Citação: Todas as tuas afirmações, conclusões ou propostas de decisão devem ser rigorosamente sustentadas por citações fundamentadas quer nos documentos carregados, quer nos artigos específicos da legislação abordada.
+- Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado.
 """
 
-# --- 6. Funções de Custo e Upload (Chunking de Grande Porte) ---
+# --- 6. Funções de Custo e Upload ---
 def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-flash"):
     if "pro" in modelo:
         p_in = (prompt_tokens / 1_000_000) * 1.25
         p_out = (candidates_tokens / 1_000_000) * 5.00
     else:
-        # Preços de referência para o gemini-2.5-flash
         p_in = (prompt_tokens / 1_000_000) * 0.075
         p_out = (candidates_tokens / 1_000_000) * 0.30
     return (p_in + p_out) * taxa_eur
 
-def enviar_para_google(uploaded_file):
+def enviar_para_google(client, uploaded_file):
     ext = os.path.splitext(uploaded_file.name)[1]
     temp_path = f"temp_{uuid.uuid4()}{ext}"
     
@@ -197,11 +178,11 @@ def enviar_para_google(uploaded_file):
         
     try:
         mime_type = "application/pdf" if uploaded_file.type == "application/pdf" else None
-        g_file = genai.upload_file(path=temp_path, display_name=uploaded_file.name, mime_type=mime_type)
+        g_file = client.files.upload(file=temp_path, config=types.UploadFileConfig(display_name=uploaded_file.name, mime_type=mime_type))
         
         while g_file.state.name == "PROCESSING":
             time.sleep(2)
-            g_file = genai.get_file(g_file.name)
+            g_file = client.files.get(name=g_file.name)
             
         return g_file
     except Exception as e:
@@ -220,8 +201,11 @@ with st.sidebar:
     
     api_key_env = os.environ.get("GEMINI_API_KEY", "")
     api_input = st.text_input("Chave API Gemini (Paga/Studio)", value=api_key_env, type="password")
+    
+    # Inicializar o cliente com a chave fornecida
+    client = None
     if api_input:
-        genai.configure(api_key=api_input)
+        client = genai.Client(api_key=api_input)
     else:
         st.warning("Insira a sua chave API para começar.")
 
@@ -243,7 +227,6 @@ with st.sidebar:
 # --- 8. Módulo Central do Chat ---
 st.markdown(f"## 💬 Painel Central de Análise: {st.session_state.chat_atual}")
 
-# Seleção de Salas e Motor de Inteligência
 col_c1, col_c2, col_c3 = st.columns([2, 1, 1])
 with col_c1:
     novo_chat = st.text_input("Nova sala de análise...")
@@ -262,7 +245,6 @@ with col_c2:
         st.rerun()
 with col_c3:
     chat_context = st.session_state.all_chats[st.session_state.chat_atual]
-    # CONFIGURAÇÃO: Ordenação alterada para que o Flash seja o índice 0 (Padrão)
     chat_context["model"] = st.selectbox(
         "Motor Gemini", 
         ["gemini-2.5-flash", "gemini-2.5-pro"], 
@@ -271,7 +253,6 @@ with col_c3:
 
 st.markdown("---")
 
-# Duas colunas para gestão de documentos carregados na sessão
 col_u1, col_u2 = st.columns(2)
 with col_u1:
     st.markdown("### 🗂️ 1. Processos de Fiscalização")
@@ -290,7 +271,6 @@ with col_u2:
 
 st.markdown("---")
 
-# Renderizar Histórico Existente
 for msg in chat_context["history"]:
     role = "user" if msg["role"] == "user" else "assistant"
     with st.chat_message(role):
@@ -300,73 +280,82 @@ for msg in chat_context["history"]:
             elif hasattr(part, "text"):
                 st.markdown(part.text)
 
-# Janela de Comando Central (Chat Input)
 if prompt := st.chat_input("Insira o comando ou questão sobre os processos anexados..."):
-    st.chat_message("user").markdown(prompt)
-    
-    payload_conteudo = []
-    
-    # 1. Injetar o histórico estruturado como texto limpo compilado
-    texto_historico = ""
-    for h_msg in chat_context["history"]:
-        prefixo_role = "UTILIZADOR ANTERIOR: " if h_msg["role"] == "user" else "ASSISTENTE ANTERIOR (A tua resposta): "
-        texto_msg = ""
-        for p in h_msg["parts"]:
-            if isinstance(p, str): texto_msg += p
-            elif isinstance(p, dict) and "text" in p: texto_msg += p["text"]
-            elif hasattr(p, "text"): texto_msg += p.text
-        if texto_msg.strip():
-            texto_historico += f"{prefixo_role}\n{texto_msg}\n---\n"
-            
-    if texto_historico:
-        payload_conteudo.append(f"HISTÓRICO DA CONVERSA:\n{texto_historico}")
-            
-    # 2. Processar e anexar os novos ficheiros grandes de processos
-    if uploaded_files:
-        with st.spinner("A indexar processos e dossiers de fiscalização na Google Cloud..."):
-            for f in uploaded_files:
-                g_file_ref = enviar_para_google(f)
-                payload_conteudo.append(g_file_ref)
+    if not client:
+        st.error("Por favor, insira uma Chave API válida na barra lateral.")
+    else:
+        st.chat_message("user").markdown(prompt)
+        
+        payload_conteudo = []
+        
+        texto_historico = ""
+        for h_msg in chat_context["history"]:
+            prefixo_role = "UTILIZADOR ANTERIOR: " if h_msg["role"] == "user" else "ASSISTENTE ANTERIOR: "
+            texto_msg = ""
+            for p in h_msg["parts"]:
+                if isinstance(p, str): texto_msg += p
+                elif isinstance(p, dict) and "text" in p: texto_msg += p["text"]
+                elif hasattr(p, "text"): texto_msg += p.text
+            if texto_msg.strip():
+                texto_historico += f"{prefixo_role}\n{texto_msg}\n---\n"
                 
-    # 3. Processar e anexar o documento modelo de referência, se existir
-    if uploaded_template:
-        with st.spinner("A estruturar documento tipo/modelo de referência..."):
-            g_template_ref = enviar_para_google(uploaded_template)
-            payload_conteudo.append("NOTA CRÍTICA DE FORMATO: O documento em anexo que se segue representa o teu DOCUMENTO TIPO/MODELO. Deves mimetizar de forma estrita e absoluta a sua estrutura, índices, tom, divisões de secções e estilo formal em qualquer relatório jurídico ou parecer solicitado nesta sessão.")
-            payload_conteudo.append(g_template_ref)
-            
-    # 4. Adicionar o comando atual do utilizador
-    payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR:\n{prompt}")
+        if texto_historico:
+            payload_conteudo.append(f"HISTÓRICO DA CONVERSA:\n{texto_historico}")
+                
+        if uploaded_files:
+            with st.spinner("A indexar processos e dossiers na Google Cloud..."):
+                for f in uploaded_files:
+                    g_file_ref = enviar_para_google(client, f)
+                    payload_conteudo.append(g_file_ref)
+                    
+        if uploaded_template:
+            with st.spinner("A estruturar documento tipo de referência..."):
+                g_template_ref = enviar_para_google(client, uploaded_template)
+                payload_conteudo.append("NOTA CRÍTICA DE FORMATO: O documento em anexo representa o teu DOCUMENTO TIPO/MODELO. Deves mimetizar de forma estrita e absoluta a sua estrutura, tom e divisões.")
+                payload_conteudo.append(g_template_ref)
+                
+        payload_conteudo.append(f"COMANDO ATUAL DO UTILIZADOR:\n{prompt}")
 
-    with st.chat_message("assistant"):
-        try:
-            # Inicializar o modelo com as Instruções de Legislação do Sistema
-            model_instance = genai.GenerativeModel(
-                model_name=chat_context["model"],
-                system_instruction=INSTRUCOES_SISTEMA
-            )
-            
-            # Chamar a geração de conteúdo com o payload de parts isoladas
-            response = model_instance.generate_content(payload_conteudo)
-            
-            # Cálculo e atualização de custos reais da chamada
-            u = response.usage_metadata
-            custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
-            
-            st.session_state.total_eur += custo
-            st.session_state.total_tokens_session += u.total_token_count
-            
-            # Atualizar histórico em formato de string seguro para persistência no JSON
-            chat_context["history"].append({"role": "user", "parts": [prompt]})
-            chat_context["history"].append({"role": "model", "parts": [response.text]})
-            
-            # Sincronizar dados locais
-            db["total_eur"] = st.session_state.total_eur
-            db["total_tokens"] = st.session_state.total_tokens_session
-            db["all_chats"] = st.session_state.all_chats
-            salvar_dados(db)
+        with st.chat_message("assistant"):
+            try:
+                # Chamada com o SDK novo, injetando Instruções de Sistema e Grounding (Google Search)
+                response = client.models.generate_content(
+                    model=chat_context["model"],
+                    contents=payload_conteudo,
+                    config=types.GenerateContentConfig(
+                        system_instruction=INSTRUCOES_SISTEMA,
+                        # Ativação da Pesquisa Web em Tempo Real
+                        tools=[types.Tool(google_search=types.GoogleSearch())],
+                        temperature=0.2
+                    )
+                )
+                
+                u = response.usage_metadata
+                custo = calcular_custo_eur(u.prompt_token_count, u.candidates_token_count, st.session_state.taxa_cambio, chat_context["model"])
+                
+                st.session_state.total_eur += custo
+                st.session_state.total_tokens_session += u.total_token_count
+                
+                chat_context["history"].append({"role": "user", "parts": [prompt]})
+                chat_context["history"].append({"role": "model", "parts": [response.text]})
+                
+                db["total_eur"] = st.session_state.total_eur
+                db["total_tokens"] = st.session_state.total_tokens_session
+                db["all_chats"] = st.session_state.all_chats
+                salvar_dados(db)
 
-            st.markdown(response.text)
-            st.rerun()
-        except Exception as e:
-            st.error(f"Erro na geração da análise: {e}")
+                # Apresentar Resposta Principal
+                st.markdown(response.text)
+
+                # Apresentar Fontes da Pesquisa Web (se aplicável)
+                if response.candidates and response.candidates[0].grounding_metadata and response.candidates[0].grounding_metadata.grounding_chunks:
+                    st.markdown("---")
+                    st.markdown("### 📚 Fontes Web Consultadas (Grounding):")
+                    chunks = response.candidates[0].grounding_metadata.grounding_chunks
+                    for chunk in chunks:
+                        if chunk.web:
+                            st.markdown(f"- [{chunk.web.title}]({chunk.web.uri})")
+
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro na geração da análise: {e}")
