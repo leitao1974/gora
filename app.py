@@ -202,10 +202,13 @@ with st.sidebar:
     api_key_env = os.environ.get("GEMINI_API_KEY", "")
     api_input = st.text_input("Chave API Gemini (Paga/Studio)", value=api_key_env, type="password")
     
-    # Inicializar o cliente com a chave fornecida
+    # Inicializar o cliente com a chave fornecida e a versão v1beta
     client = None
     if api_input:
-        client = genai.Client(api_key=api_input)
+        client = genai.Client(
+            api_key=api_input,
+            http_options={'api_version': 'v1beta'}
+        )
     else:
         st.warning("Insira a sua chave API para começar.")
 
