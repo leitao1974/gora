@@ -22,7 +22,8 @@ def carregar_dados():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except: pass
+        except:
+            pass
     return {
         "total_eur": 0.0, 
         "total_tokens": 0,
@@ -49,7 +50,7 @@ st.markdown("""
     [data-testid="stSidebar"] span, 
     [data-testid="stSidebar"] label, 
     [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h3,
+    [data-testid="stSidebar"] h3, 
     [data-testid="stSidebar"] div { 
         color: #1E1E1E !important; 
     }
@@ -60,49 +61,49 @@ st.markdown("""
     }
     .stChatMessage {
         background-color: #FFFFFF !important; 
-        border: 2px solid #E0E0E0 !important;
+        border: 2px solid #E0E0E0 !important; 
         border-radius: 12px !important; 
-        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important;
+        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.08) !important; 
         margin-bottom: 15px; 
-        padding: 20px !important;
-        color: #1E1E1E !important;
+        padding: 20px !important; 
+        color: #1E1E1E !important; 
     }
     .stButton>button { 
         border-radius: 10px !important; 
-        border: 2px solid #2E7D32 !important;
+        border: 2px solid #2E7D32 !important; 
         background-color: #FFFFFF !important; 
-        color: #2E7D32 !important;
+        color: #2E7D32 !important; 
         font-weight: 800 !important; 
-        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2) !important;
-        transition: all 0.2s !important;
+        box-shadow: 4px 4px 0px rgba(46, 125, 50, 0.2) !important; 
+        transition: all 0.2s !important; 
     }
     .stButton>button:hover { 
-        background-color: #2E7D32 !important;
-        color: #FFFFFF !important;
-        transform: translate(-2px, -2px) !important;
-        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3) !important;
+        background-color: #2E7D32 !important; 
+        color: #FFFFFF !important; 
+        transform: translate(-2px, -2px) !important; 
+        box-shadow: 6px 6px 0px rgba(46, 125, 50, 0.3) !important; 
     }
     div[data-testid="stSidebar"] .stButton>button {
-        border: 2px solid #ef4444 !important;
-        color: #ef4444 !important;
-        box-shadow: 4px 4px 0px rgba(239, 68, 68, 0.2) !important;
+        border: 2px solid #ef4444 !important; 
+        color: #ef4444 !important; 
+        box-shadow: 4px 4px 0px rgba(239, 68, 68, 0.2) !important; 
     }
     div[data-testid="stSidebar"] .stButton>button:hover {
-        background-color: #ef4444 !important;
-        color: #FFFFFF !important;
-        box-shadow: 6px 6px 0px rgba(239, 68, 68, 0.3) !important;
+        background-color: #ef4444 !important; 
+        color: #FFFFFF !important; 
+        box-shadow: 6px 6px 0px rgba(239, 68, 68, 0.3) !important; 
     }
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: #FFFFFF !important;
-        color: #1E1E1E !important;
-        border: 2px solid #E0E0E0 !important;
-        border-radius: 8px !important;
+        background-color: #FFFFFF !important; 
+        color: #1E1E1E !important; 
+        border: 2px solid #E0E0E0 !important; 
+        border-radius: 8px !important; 
     }
     .stFileUploader {
-        background-color: #FFFFFF !important;
-        border: 2px dashed #2E7D32 !important;
-        border-radius: 10px !important;
-        padding: 12px !important;
+        background-color: #FFFFFF !important; 
+        border: 2px dashed #2E7D32 !important; 
+        border-radius: 10px !important; 
+        padding: 12px !important; 
     }
     </style>
     """, unsafe_allow_html=True)
@@ -159,14 +160,42 @@ REGRAS DE FORMATAÇÃO E RESPOSTA:
 - Tom: Mantém um tom estritamente formal, técnico, objetivo e juridicamente blindado.
 """
 
-# --- 6. Funções de Custo e Upload ---
+# --- 6. Funções de Modelos, Custo e Upload ---
+@st.cache_data(ttl=3600, show_spinner=False)
+def obter_modelos_gemini(api_key):
+    """Consulta todos os modelos Gemini disponíveis na conta que suportam geração de conteúdo."""
+    modelos_fallback = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
+    if not api_key:
+        return modelos_fallback
+    try:
+        temp_client = genai.Client(api_key=api_key, http_options={'api_version': 'v1beta'})
+        modelos_validos = []
+        for m in temp_client.models.list():
+            nome = m.name.replace("models/", "")
+            acoes = getattr(m, "supported_actions", []) or []
+            # Filtra apenas modelos Gemini capazes de gerar texto/multimodal (exclui embeddings, imagen, veo, etc.)
+            if "gemini" in nome.lower() and "generateContent" in acoes:
+                modelos_validos.append(nome)
+        
+        if modelos_validos:
+            # Ordena de forma inversa para colocar as versões mais recentes no topo
+            return sorted(modelos_validos, reverse=True)
+    except Exception:
+        pass
+    return modelos_fallback
+
 def calcular_custo_eur(prompt_tokens, candidates_tokens, taxa_eur, modelo="gemini-2.5-flash"):
-    if "pro" in modelo:
+    modelo_lower = modelo.lower()
+    if "pro" in modelo_lower:
         p_in = (prompt_tokens / 1_000_000) * 1.25
-        p_out = (candidates_tokens / 1_000_000) * 5.00
-    else:
+        p_out = (candidates_tokens / 1_000_000) * 10.00
+    elif "lite" in modelo_lower:
         p_in = (prompt_tokens / 1_000_000) * 0.075
         p_out = (candidates_tokens / 1_000_000) * 0.30
+    else:
+        # Padrão Flash (2.5 / 3.x)
+        p_in = (prompt_tokens / 1_000_000) * 0.15
+        p_out = (candidates_tokens / 1_000_000) * 0.60
     return (p_in + p_out) * taxa_eur
 
 def enviar_para_google(client, uploaded_file):
@@ -209,6 +238,9 @@ with st.sidebar:
             api_key=api_input,
             http_options={'api_version': 'v1beta'}
         )
+        if st.button("🔄 Atualizar Lista de Modelos"):
+            obter_modelos_gemini.clear()
+            st.rerun()
     else:
         st.warning("Insira a sua chave API para começar.")
 
@@ -248,10 +280,20 @@ with col_c2:
         st.rerun()
 with col_c3:
     chat_context = st.session_state.all_chats[st.session_state.chat_atual]
+    modelos_disponiveis = obter_modelos_gemini(api_input)
+    
+    modelo_guardado = chat_context.get("model", "gemini-2.5-flash")
+    if modelo_guardado in modelos_disponiveis:
+        idx_modelo = modelos_disponiveis.index(modelo_guardado)
+    elif "gemini-2.5-flash" in modelos_disponiveis:
+        idx_modelo = modelos_disponiveis.index("gemini-2.5-flash")
+    else:
+        idx_modelo = 0
+
     chat_context["model"] = st.selectbox(
-        "Motor Gemini", 
-        ["gemini-2.5-flash", "gemini-2.5-pro"], 
-        index=0 if chat_context.get("model", "gemini-2.5-flash") == "gemini-2.5-flash" else 1
+        f"Motor Gemini ({len(modelos_disponiveis)})", 
+        modelos_disponiveis, 
+        index=idx_modelo
     )
 
 st.markdown("---")
